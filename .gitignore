@@ -27,7 +27,10 @@ tmp/
 .codex/
 AGENTS.md
 # Local design notes
-/docs/
+/docs/*
+!/docs/development-log.md
+!/docs/research_agent_architecture_baseline.md
+!/docs/pdf-figure-runtime-release.md
 /docs/claude-session-isolation-design.md
 /docs/claude-code-mode-user-guide.md
 /docs/claude-code-mode-user-guide.zh-CN.md
