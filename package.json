@@ -37,27 +37,27 @@
     "test:agent:live": "node scripts/run-workflow-tests.mjs --agent-live"
   },
   "dependencies": {
-    "fflate": "^0.8.2",
-    "highlight.js": "^11.11.1",
-    "katex": "^0.16.28",
+    "fflate": "^0.8.3",
+    "highlight.js": "^11.12.0",
+    "katex": "^0.18.5",
     "marked": "^16.4.2",
-    "mermaid": "^11.15.0",
-    "zotero-plugin-toolkit": "^5.1.0-beta.13"
+    "mermaid": "^11.17.2",
+    "zotero-plugin-toolkit": "^5.2.0"
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.0",
-    "@zotero-plugin/eslint-config": "^0.6.7",
-    "chai": "^6.2.1",
+    "@zotero-plugin/eslint-config": "^0.6.10",
+    "chai": "^6.2.2",
     "eslint": "^9.39.2",
     "mocha": "^11.7.5",
-    "prettier": "^3.7.4",
+    "prettier": "^3.9.6",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "zotero-plugin-scaffold": "^0.8.2",
-    "zotero-types": "^4.1.0-beta.4"
+    "zotero-plugin-scaffold": "^0.9.1",
+    "zotero-types": "^4.1.3"
   },
   "prettier": {
     "printWidth": 80,
