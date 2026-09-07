@@ -478,6 +478,15 @@ Profile 是派生状态，不是唯一 Source of Truth。
 
 # 8. ResearchProfile 第一版数据模型
 
+Phase 2 已确定：每个 Zotero library 一个画像，统一通过 `profileIdForLibrary(libraryID)`
+生成 `library:<positive-safe-integer>`；不支持跨库合并、collection persona 或 conversation 画像。
+本地论文身份由适配器统一生成 `library:<libraryID>:item:<itemID>`，跨设备 key 迁移另行设计。
+
+生产持久化使用独立 `llm_for_zotero_research_profiles` SQLite 表，保存
+`profile_id / version / schema_version / profile_json / updated_at`。
+`schema_version = 1` 与快照修订号分离；读写均校验，未知 schema 明确失败。
+创建 version 1 和更新 N → N+1 在 Zotero.DB 事务内通过条件写入及受影响行数校验完成 CAS；冲突明确返回，不隐式重试。
+
 ```ts
 interface ResearchProfile {
   profileId: string;
@@ -733,6 +742,8 @@ interface RecommendationFeedback {
 interface RecommendationImpression {
   recommendationId: string;
 
+  profileId: string;
+
   timestamp: number;
 
   profileVersion: number;
@@ -744,6 +755,7 @@ interface RecommendationImpression {
 至少记录：
 
 - 推荐 ID；
+- profile ID（Phase 2 补充，避免不同 library 的相同版本混淆）；
 - profile version；
 - paper；
 - rank；
@@ -823,6 +835,18 @@ interface CandidateScores {
 ---
 
 # 19. Profile 初始化
+
+Phase 2 实际输入复用 LibraryIndex，经 `IndexedResearchLibrarySource` 转为独立论文信号。
+仅纳入当前库的 regular、未删除、有效非空标题记录；不遍历 PDF 全文或 UI 对象。
+无模型时以人工标签和 collection 完整路径生成主题；automatic tags 暂不参与回退评分。
+可选 Utility LLM 仅分批补充有输入论文 ID 支持的主题，严格校验后进入相同的确定性评分路径。
+模型不可用、空响应、非法 JSON / ID / confidence、超时或传输失败均返回警告并回退。
+Phase 2 不计算 embedding。
+
+生命周期：缺失即构建，存在即加载，`refresh:true` 显式重建；无后台定时或增量画像刷新。
+显式偏好替换通过验证后执行完整重建和单次 CAS，以同步主题分数及代表论文；因此该操作与其他完整重建一样，
+`generatedAt`、`updatedAt` 均取本次重建时间，version 加一。不存在仅修改偏好却保留旧推断分数的更新路径。
+详细公式、调用上限及反馈状态处理见 `docs/development-log.md` 的 Phase 2 记录。
 
 第一版使用 Zotero Library 元数据和摘要构建。
 
@@ -1060,6 +1084,10 @@ Phase 1：
 - profile evidence；
 - `research_profile_get`。
 
+Phase 2 工具只对插件内 Agent Runtime 暴露，`localAgentOnly: true`，用户视角为 read，
+无 Zotero 内容修改、Action 写入或 Change Journal 操作。输入仅 `refresh?: boolean`，
+library scope 来自当前请求/上下文且必须有效；普通聊天、Codex App Server、Claude Code、WebChat 和 MCP 暂不支持。
+
 ---
 
 ## Phase 3 — Candidate Discovery
@@ -1158,6 +1186,8 @@ Agent Evaluation：
 3. **Persistent ResearchProfile 不得写入 conversationMemory。**
 4. **LLM 输出不得直接成为长期状态，必须经过 schema validation 和 deterministic update。**
 5. **Zotero 写操作不得绕过现有 Tool Registry / Action Contract / Change Journal。**
+
+Phase 2 附加约束：**没有配置 Utility LLM 时也必须能构建有效的确定性画像。**
 
 ---
 

@@ -162,6 +162,7 @@ describe("recommendation store boundaries (in-memory test doubles)", function ()
     impression.candidates[0].scores.finalScore = 999;
     const saved = (await store.load("rec-1"))!;
     assert.deepEqual(saved, makeImpression());
+    assert.equal(saved.profileId, "profile-1");
     saved.candidates[0].matchedTopicIds.push("other");
     assert.deepEqual(await store.load("rec-1"), makeImpression());
     await rejects(store.save(impression), "Duplicate");

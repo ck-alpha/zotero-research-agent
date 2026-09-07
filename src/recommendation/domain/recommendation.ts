@@ -11,6 +11,7 @@ export interface RecommendedPaper extends RecommendationCandidate {
 
 export interface RecommendationImpression {
   recommendationId: string;
+  profileId: string;
   timestamp: number;
   profileVersion: number;
   candidates: RecommendedPaper[];

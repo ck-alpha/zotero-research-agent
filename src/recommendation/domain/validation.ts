@@ -1,4 +1,4 @@
-import type { ResearchProfile } from "./profile";
+import type { ExplicitPreferences, ResearchProfile } from "./profile";
 import type { RecommendationCandidate } from "./candidate";
 import type { RecommendationFeedback } from "./feedback";
 import type { RecommendationImpression } from "./recommendation";
@@ -94,6 +94,10 @@ const preference = object({
   createdAt: timestamp,
   updatedAt: timestamp,
 });
+const explicitPreferences = object({
+  positiveTopics: array(preference),
+  negativeTopics: array(preference),
+});
 const profile = object({
   profileId: assertNonEmptyId,
   version,
@@ -122,10 +126,7 @@ const profile = object({
       addedAt: timestamp,
     }),
   ),
-  explicitPreferences: object({
-    positiveTopics: array(preference),
-    negativeTopics: array(preference),
-  }),
+  explicitPreferences,
   embedding: optional(
     object({
       model: assertNonEmptyId,
@@ -176,6 +177,7 @@ const feedback = object({
 });
 const impression = object({
   recommendationId: assertNonEmptyId,
+  profileId: assertNonEmptyId,
   timestamp,
   profileVersion: version,
   candidates: array(
@@ -187,6 +189,12 @@ const impression = object({
     }),
   ),
 });
+
+export function assertExplicitPreferences(
+  value: unknown,
+): asserts value is ExplicitPreferences {
+  explicitPreferences(value, "explicitPreferences");
+}
 
 export function assertResearchProfile(
   value: unknown,

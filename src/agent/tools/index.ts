@@ -1,4 +1,6 @@
 import { AgentToolRegistry } from "./registry";
+import { createResearchProfileGetTool } from "./recommendation/researchProfileGet";
+import { createProductionProfileService } from "../../recommendation/profile/production";
 import { PdfService } from "../services/pdfService";
 import { RetrievalService } from "../services/retrievalService";
 import { LibraryRetrieveService } from "../services/libraryRetrieveService";
@@ -666,6 +668,9 @@ export function createBuiltInToolRegistry(
   registry.register(markToolTier(runCommand, "advanced"));
   registry.register(markToolTier(zoteroScript, "advanced"));
   registry.register(createToolResultReadTool());
+  registry.register(
+    createResearchProfileGetTool(createProductionProfileService()),
+  );
 
   const legacyTools: AgentToolDefinition<any, any>[] = [
     queryLibrary,

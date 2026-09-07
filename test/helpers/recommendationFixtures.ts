@@ -103,6 +103,7 @@ export function makeImpression(): RecommendationImpression {
   const candidate = makeCandidate();
   return {
     recommendationId: "rec-1",
+    profileId: "profile-1",
     timestamp: 100,
     profileVersion: 1,
     candidates: [

@@ -13,6 +13,17 @@ import {
 } from "./helpers/recommendationFixtures";
 
 describe("recommendation domain contracts", function () {
+  it("requires an impression profile identity as well as its revision", function () {
+    assert.equal(makeImpression().profileId, "profile-1");
+    for (const profileId of [undefined, null, "", " ", 1]) {
+      assert.throws(
+        () =>
+          assertRecommendationImpression({ ...makeImpression(), profileId }),
+        TypeError,
+        "profileId",
+      );
+    }
+  });
   it("round trips a complete profile with independent intensity and confidence", function () {
     const original = makeProfile();
     const value: unknown = JSON.parse(JSON.stringify(original));
