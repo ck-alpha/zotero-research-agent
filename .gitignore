@@ -29,6 +29,7 @@ AGENTS.md
 # Local design notes
 /docs/*
 !/docs/development-log.md
+!/docs/phase7-host-validation.md
 !/docs/research_agent_architecture_baseline.md
 !/docs/pdf-figure-runtime-release.md
 /docs/claude-session-isolation-design.md

@@ -104,6 +104,7 @@ export class RankingService {
         inputCandidateCount: candidates.length,
         semanticRequested: Boolean(input.semanticProvider && candidates.length),
         semanticSucceeded: Boolean(vectors),
+        ...(semantic.timedOut ? { semanticTimedOut: true } : {}),
         semanticCandidateCount: vectors ? candidates.length : 0,
         semanticFallback: Boolean(candidates.length && !vectors),
         topKRequested: topK,

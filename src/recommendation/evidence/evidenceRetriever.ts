@@ -10,6 +10,8 @@ import { evidenceConfidence } from "./evidenceRanker";
 import { compareText, textMatch } from "../ranking/textSimilarity";
 import { checkCancelled } from "../ranking/semantic";
 
+class EvidenceSourceTimeout extends Error {}
+
 export const candidateAbstractReference = (candidateId: string) =>
   `candidate:${encodeURIComponent(candidateId)}#abstract`;
 export function matchedLabels(input: EvidenceInput): string[] {
@@ -39,7 +41,8 @@ async function boundedRead<T>(
   remainingMs: number = config.sourceTimeoutMs,
 ): Promise<T> {
   checkCancelled(signal);
-  if (remainingMs <= 0) throw new Error("Evidence source budget exhausted");
+  if (remainingMs <= 0)
+    throw new EvidenceSourceTimeout("Evidence source budget exhausted");
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort: (() => void) | undefined;
   try {
@@ -47,7 +50,7 @@ async function boundedRead<T>(
       Promise.resolve().then(read),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error("Evidence source timeout")),
+          () => reject(new EvidenceSourceTimeout("Evidence source timeout")),
           Math.min(config.sourceTimeoutMs, remainingMs),
         );
         abort = () => reject(new Error("Evidence retrieval cancelled"));
@@ -150,7 +153,9 @@ export async function retrieveEvidence(
               throw new TypeError("Evidence reference scope mismatch");
             add(kind, r.reference, r.text);
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof EvidenceSourceTimeout)
+            warnings.push("evidence_source_timeout");
           checkCancelled(input.signal);
           warnings.push("evidence_partial_failure");
         }

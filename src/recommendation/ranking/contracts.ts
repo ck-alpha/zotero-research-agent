@@ -29,6 +29,7 @@ export interface RankingResult {
     semanticSucceeded: boolean;
     semanticCandidateCount: number;
     semanticFallback: boolean;
+    semanticTimedOut?: boolean;
     topKRequested: number;
     topKReturned: number;
   };

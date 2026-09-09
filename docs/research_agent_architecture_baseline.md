@@ -1189,25 +1189,21 @@ candidate Tool 用于发现池检查，通用学术检索继续使用 literature
 
 ---
 
-## Phase 7 — Evaluation
+## Phase 7 — Evaluation（已实现离线框架，宿主待验收）
 
-Recommendation Evaluation：
+独立 `src/recommendation/evaluation/` 只观察既有 Profile / Candidate / Ranking / Evidence；
+不拥有偏好状态，不更新分数、画像或反馈，不依赖 Zotero/Agent/模型/数据库。
 
-- Temporal Holdout；
-- Recall@K；
-- NDCG@K；
-- MRR；
-- Diversity；
-- Ablation。
+- `RecommendationEvaluationCase` 固定 id、完整 profile/candidates、now、topK、可选 preferred/rejected IDs 与 knownCandidateIds；可 JSON 往返。候选唯一，标注不得未知、重复或矛盾。
+- `runRecommendationEvaluation` 在固定时刻复用当前 RankingService 和无外部来源的证据检索/formatter；A 强匹配、B 负兼容度、C 证据缺失三类 fixture。`evaluateRecommendationResults` 检查捕获的领域结果，拒绝非法排名、分数、成员/主题和被改写标题/摘要。
+- 排序工程指标：Precision@K（固定 K 分母）、Recall@K、截断至 K 的 MRR、二元 NDCG@K、title+abstract token Jaccard 平均成对距离、精确 ID novelty；附 rejectedAtK。未标注的相关性/novelty 为 null 并警告；已标注但空输入为 0。
+- 证据指标：availability、matched-topic coverage、reason grounding rate、unsupported count。验证引用唯一且属于候选、匹配主题存在、直接摘要片段属于候选摘要，并用原确定性 formatter 重建 reason 比较。证据不足合法降级不算 unsupported，也不算 grounded。不能据此宣称任意自然语言蕴含、来源真实性或科研效果。
+- `traceFormatter` 只输出候选、画像主题、既有 score breakdown/provenance、证据和理由，源字符串 JSON 转义；无隐藏推理、无链式思维、无 UI 或自动持久化/上传。
+- `RecommendationDiagnostics` 是每次调用内的可选内部回调；Tool 装配可观察 discovery/ranking/evidence/total 的 durationMs、timeout、fallback、failureCode。计时与纯评测输入分离，失败/取消仍记录，回调异常不能改变业务结果。total 包含画像读取、快照及曝光保存；无正文、错误消息或用户身份收集。
+- 仅添加已有 embedding/evidence 截止路径的超时标记，不改时间预算或排序算法；discovery adapter 仅提供通用错误时无法识别底层 timeout。没有延迟优化或服务级阈值声明。
+- 手工步骤及真实执行状态见 `docs/phase7-host-validation.md`：profile_get、candidate_discover、research_recommend、feedback、SQLite/重启、group library 和可选 OpenAlex/embedding。当前均未在真实宿主执行；自动化测试保持无网络。
 
-Agent Evaluation：
-
-- Tool Selection Accuracy；
-- Tool Argument Validity；
-- Workflow Success Rate；
-- Average Tool Calls；
-- Latency；
-- Failure Recovery。
+Temporal holdout、真实标注/消融、Agent Tool Selection/Argument Accuracy、Workflow Success/Tool Calls 统计仍待后续真实数据与宿主验收，不把合成回归当科学评价。没有引入学习排序、LLM ranking、自动反馈优化、用户追踪、外部 analytics、UI、Scheduler、向量库或新的 Zotero 条目写操作。
 
 ---
 

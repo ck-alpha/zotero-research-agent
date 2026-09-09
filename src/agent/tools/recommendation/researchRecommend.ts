@@ -1,3 +1,5 @@
+import { RecommendationDiagnostics } from "../../../recommendation/evaluation/diagnostics";
+import type { StageDiagnostic } from "../../../recommendation/evaluation/contracts";
 import { RecommendationEvidenceService } from "../../../recommendation/evidence/evidenceService";
 import type {
   EvidenceContentSource,
@@ -26,6 +28,9 @@ export function createResearchRecommendTool(
   librarySource: ResearchLibrarySource,
   sourceFactory: (context: AgentToolContext) => LiteratureDiscoverySource,
   options: {
+    /** Internal debug hook; excluded from tool output and persistence. */
+    onDiagnostic?: (record: StageDiagnostic) => void;
+    diagnosticClock?: () => number;
     evidenceSource?: EvidenceContentSource;
     embeddingFactory?: () => RankingEmbeddingProvider | undefined;
     now?: () => number;
@@ -98,127 +103,179 @@ export function createResearchRecommendTool(
       }
     },
     async execute(input, context) {
-      const validated = this.validate(input);
-      if (!validated.ok)
-        throw new TypeError("Invalid recommendation arguments");
-      checkCancelled(context.signal);
-      const libraryID = resolveProfileLibraryID(context);
-      const profileResult = await profileService.get(libraryID, {
-        signal: context.signal,
-        extractor: createProfileTopicExtractor(context),
-      });
-      checkCancelled(context.signal);
-      const snapshot = await librarySource.getLibrarySnapshot(libraryID);
-      checkCancelled(context.signal);
-      const now = options.now ?? Date.now;
-      const discovery = await new CandidateDiscoveryService(
-        sourceFactory(context),
-        { now },
-      ).discover({
-        libraryID,
-        profile: profileResult.profile,
-        snapshot,
-        focus: input.focus,
-        signal: context.signal,
-      });
-      const ranked = await new RankingService().rank({
-        profile: profileResult.profile,
-        candidates: discovery.candidates,
-        focus: discovery.focus,
-        now: now(),
-        topK: input.topK,
-        signal: context.signal,
-        semanticProvider: (
-          options.embeddingFactory ?? createRecommendationEmbeddingProvider
-        )(),
-      });
-      const evidenceService = new RecommendationEvidenceService(
-        options.evidenceSource,
+      const diagnostics = new RecommendationDiagnostics(
+        options.onDiagnostic,
+        options.diagnosticClock,
+        context.signal,
       );
-      const grounded = new Map<string, EvidenceResult>();
-      for (const candidate of ranked.recommendations) {
-        grounded.set(
-          candidate.candidateId,
-          await evidenceService.explain({
-            candidate,
-            profile: profileResult.profile,
-            snapshot,
-            now: ranked.generatedAt,
-            signal: context.signal,
+      return diagnostics.measure("total", async () => {
+        const validated = this.validate(input);
+        if (!validated.ok)
+          throw new TypeError("Invalid recommendation arguments");
+        checkCancelled(context.signal);
+        const libraryID = resolveProfileLibraryID(context);
+        const profileResult = await profileService.get(libraryID, {
+          signal: context.signal,
+          extractor: createProfileTopicExtractor(context),
+        });
+        checkCancelled(context.signal);
+        const snapshot = await librarySource.getLibrarySnapshot(libraryID);
+        checkCancelled(context.signal);
+        const now = options.now ?? Date.now;
+        const discovery = await diagnostics.measure(
+          "discovery",
+          () =>
+            new CandidateDiscoveryService(sourceFactory(context), {
+              now,
+            }).discover({
+              libraryID,
+              profile: profileResult.profile,
+              snapshot,
+              focus: input.focus,
+              signal: context.signal,
+            }),
+          (result) => ({
+            failureCode:
+              result.diagnostics.queriesFailed +
+                result.diagnostics.seedsFailed >
+              0
+                ? "discovery_partial_failure"
+                : undefined,
           }),
         );
-      }
-      let truncated = false;
-      const snippet = (value: string | undefined, max: number) => {
-        if (value && value.length > max) truncated = true;
-        return value?.slice(0, max);
-      };
-      const topics = new Map(
-        profileResult.profile.topics.map((t) => [t.id, t.label]),
-      );
-      const recommendations = ranked.recommendations.map((paper) => {
-        if (paper.authors.length > config.toolMaxAuthors) truncated = true;
+        const ranked = await diagnostics.measure(
+          "ranking",
+          () =>
+            new RankingService().rank({
+              profile: profileResult.profile,
+              candidates: discovery.candidates,
+              focus: discovery.focus,
+              now: now(),
+              topK: input.topK,
+              signal: context.signal,
+              semanticProvider: (
+                options.embeddingFactory ??
+                createRecommendationEmbeddingProvider
+              )(),
+            }),
+          (result) => ({
+            fallback: result.diagnostics.semanticFallback,
+            timeout: Boolean(result.diagnostics.semanticTimedOut),
+            failureCode: result.warnings.find(
+              (w) =>
+                w === "ranking_semantic_invalid_vectors" ||
+                w === "ranking_semantic_failed_fallback",
+            ),
+          }),
+        );
+        const grounded = await diagnostics.measure(
+          "evidence",
+          async () => {
+            const evidenceService = new RecommendationEvidenceService(
+              options.evidenceSource,
+            );
+            const grounded = new Map<string, EvidenceResult>();
+            for (const candidate of ranked.recommendations) {
+              grounded.set(
+                candidate.candidateId,
+                await evidenceService.explain({
+                  candidate,
+                  profile: profileResult.profile,
+                  snapshot,
+                  now: ranked.generatedAt,
+                  signal: context.signal,
+                }),
+              );
+            }
+            return grounded;
+          },
+          (results) => {
+            const warnings = [...results.values()].flatMap((r) => r.warnings);
+            return {
+              timeout: warnings.includes("evidence_source_timeout"),
+              fallback:
+                warnings.includes("evidence_unavailable") ||
+                warnings.includes("evidence_partial_failure"),
+              failureCode: warnings.includes("evidence_partial_failure")
+                ? "evidence_partial_failure"
+                : undefined,
+            };
+          },
+        );
+        let truncated = false;
+        const snippet = (value: string | undefined, max: number) => {
+          if (value && value.length > max) truncated = true;
+          return value?.slice(0, max);
+        };
+        const topics = new Map(
+          profileResult.profile.topics.map((t) => [t.id, t.label]),
+        );
+        const recommendations = ranked.recommendations.map((paper) => {
+          if (paper.authors.length > config.toolMaxAuthors) truncated = true;
+          return {
+            ...grounded.get(paper.candidateId),
+            rank: paper.rank,
+            candidateId: paper.candidateId,
+            title: snippet(paper.title, config.toolTitleChars),
+            abstract: snippet(paper.abstract, config.toolAbstractSnippetChars),
+            authors: paper.authors
+              .slice(0, config.toolMaxAuthors)
+              .map((a) => snippet(a, config.toolAuthorChars)),
+            publicationDate: paper.publicationDate,
+            doi: paper.doi,
+            arxivId: paper.arxivId,
+            openAlexId: paper.openAlexId,
+            sourceUrl: paper.sourceUrl,
+            openAccessUrl: paper.openAccessUrl,
+            matchedTopics: paper.matchedTopicIds.map((id) => ({
+              id,
+              label: topics.get(id)!,
+            })),
+            scores: Object.fromEntries(
+              Object.entries(paper.scores)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => [k, Number(v!.toFixed(4))]),
+            ),
+            sources: paper.sources,
+            seedPaperIds: paper.seedPaperIds,
+            provenance: paper.provenance,
+          };
+        });
+        const recommendationId = globalThis.crypto.randomUUID();
+        checkCancelled(context.signal);
+        await (options.impressionStore ?? new SqliteImpressionStore()).save({
+          recommendationId,
+          profileId: ranked.profileId,
+          profileVersion: ranked.profileVersion,
+          timestamp: ranked.generatedAt,
+          topicSnapshot: [
+            ...new Set(
+              ranked.recommendations.flatMap((p) => p.matchedTopicIds),
+            ),
+          ].map((id) => ({ id, label: topics.get(id)! })),
+          candidates: ranked.recommendations,
+        });
         return {
-          ...grounded.get(paper.candidateId),
-          rank: paper.rank,
-          candidateId: paper.candidateId,
-          title: snippet(paper.title, config.toolTitleChars),
-          abstract: snippet(paper.abstract, config.toolAbstractSnippetChars),
-          authors: paper.authors
-            .slice(0, config.toolMaxAuthors)
-            .map((a) => snippet(a, config.toolAuthorChars)),
-          publicationDate: paper.publicationDate,
-          doi: paper.doi,
-          arxivId: paper.arxivId,
-          openAlexId: paper.openAlexId,
-          sourceUrl: paper.sourceUrl,
-          openAccessUrl: paper.openAccessUrl,
-          matchedTopics: paper.matchedTopicIds.map((id) => ({
-            id,
-            label: topics.get(id)!,
-          })),
-          scores: Object.fromEntries(
-            Object.entries(paper.scores)
-              .filter(([, v]) => v !== undefined)
-              .map(([k, v]) => [k, Number(v!.toFixed(4))]),
-          ),
-          sources: paper.sources,
-          seedPaperIds: paper.seedPaperIds,
-          provenance: paper.provenance,
+          recommendationId,
+          profileId: ranked.profileId,
+          profileVersion: ranked.profileVersion,
+          generatedAt: ranked.generatedAt,
+          focus: ranked.focus,
+          recommendationCount: recommendations.length,
+          recommendations,
+          discoveryDiagnostics: discovery.diagnostics,
+          rankingDiagnostics: ranked.diagnostics,
+          warnings: [
+            ...new Set([
+              ...profileResult.warnings,
+              ...discovery.warnings,
+              ...ranked.warnings,
+              ...[...grounded.values()].flatMap((result) => result.warnings),
+              ...(truncated ? ["ranking_tool_output_truncated"] : []),
+            ]),
+          ],
         };
       });
-      const recommendationId = globalThis.crypto.randomUUID();
-      checkCancelled(context.signal);
-      await (options.impressionStore ?? new SqliteImpressionStore()).save({
-        recommendationId,
-        profileId: ranked.profileId,
-        profileVersion: ranked.profileVersion,
-        timestamp: ranked.generatedAt,
-        topicSnapshot: [
-          ...new Set(ranked.recommendations.flatMap((p) => p.matchedTopicIds)),
-        ].map((id) => ({ id, label: topics.get(id)! })),
-        candidates: ranked.recommendations,
-      });
-      return {
-        recommendationId,
-        profileId: ranked.profileId,
-        profileVersion: ranked.profileVersion,
-        generatedAt: ranked.generatedAt,
-        focus: ranked.focus,
-        recommendationCount: recommendations.length,
-        recommendations,
-        discoveryDiagnostics: discovery.diagnostics,
-        rankingDiagnostics: ranked.diagnostics,
-        warnings: [
-          ...new Set([
-            ...profileResult.warnings,
-            ...discovery.warnings,
-            ...ranked.warnings,
-            ...[...grounded.values()].flatMap((result) => result.warnings),
-            ...(truncated ? ["ranking_tool_output_truncated"] : []),
-          ]),
-        ],
-      };
     },
   };
 }

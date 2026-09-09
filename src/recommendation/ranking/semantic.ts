@@ -88,13 +88,14 @@ export function profileText(
 export async function computeSemantic(
   input: RankingInput,
   config: RankingConfig,
-): Promise<{ vectors?: number[][]; warning?: string }> {
+): Promise<{ vectors?: number[][]; warning?: string; timedOut?: boolean }> {
   checkCancelled(input.signal);
   if (!input.semanticProvider)
     return { warning: "ranking_semantic_unavailable" };
   const profile = profileText(input, config);
   if (!profile.trim()) return { warning: "ranking_semantic_unavailable" };
   const controller = new AbortController();
+  let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort: () => void = () => {};
   try {
@@ -105,6 +106,7 @@ export async function computeSemantic(
       };
       input.signal?.addEventListener("abort", abort, { once: true });
       timer = setTimeout(() => {
+        timedOut = true;
         controller.abort();
         reject(new Error("timeout"));
       }, config.semanticTimeoutMs);
@@ -145,6 +147,7 @@ export async function computeSemantic(
   } catch (error) {
     checkCancelled(input.signal);
     return {
+      timedOut,
       warning:
         error instanceof InvalidRankingVectors
           ? "ranking_semantic_invalid_vectors"

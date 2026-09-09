@@ -5,14 +5,16 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-6`；历史 phase-1 至 phase-5 保留。阶段实现提交通过 `git rev-parse phase-6^{commit}` 查询，交付目标仅个人 origin/main 与 phase-6。
+- Phase checkpoint: `phase-7`；历史 phase-1 至 phase-6 保留。阶段实现提交通过 `git rev-parse phase-7^{commit}` 查询，交付目标仅个人 origin/main 与 phase-7。
 - Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Phase 5 起点为其后远端交付日志提交 5fa52194；不移动既有阶段标签。
-- Current phase: Phase 6 — Evidence-grounded Recommendation（真实宿主/live smoke 未执行）。
+- Current phase: Phase 7 — Evaluation & Validation（离线框架已实现，真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
 - Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
-- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase5_feedback_learning_loop_prompt.md](../doc/codex_phase5_feedback_learning_loop_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
+- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase7_evaluation_validation_prompt.md](../doc/codex_phase7_evaluation_validation_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
 
 ## Current Architecture Status
+
+- Phase 7：独立确定性评测合同、六项排序与四项证据指标、A/B/C fixtures、trace 检查、可选内部阶段耗时/超时/失败诊断已实现。宿主验证流程见 [phase7-host-validation.md](phase7-host-validation.md)，真实宿主尚未验收。
 
 - Production ProfileStore：已实现独立 Zotero.DB / SQLite 快照表、schema v1、读写校验、分离副本和原子 CAS；不存在数据库不可用时冒充持久化的内存回退。
 - Profile scope：每个 Zotero library 一个 `library:<libraryID>` 画像；严格正安全整数校验，无跨库静默回退。
@@ -43,6 +45,64 @@
 | MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                                               |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase7-evaluation-validation
+
+#### Goal / Git Baseline
+
+使推荐质量、解释依据、稳定性与执行故障可测量，不调整排序或反馈策略。
+
+- 起点 `0642605f05f239c4200245e6dcdd5510aa1a5489`：本地 main 与 `git ls-remote origin refs/heads/main` 相同；远端无 phase-7 标签，tracked tree 干净。
+- 交付提交使用 `feat(recommendation): add evaluation and validation framework`，annotated `phase-7` 指向该提交；最终 hash 通过 `git rev-parse phase-7^{commit}` 解析。只推送个人 origin/main 与 phase-7，不强推。
+- 纳入实现、测试、原样 Phase 7 需求、架构基线、宿主检查文档及本日志；用户原有 doc/analysis/ 与独立中文分析报告保持未跟踪，不纳入交付。
+
+#### Changes / Architecture
+
+- `src/recommendation/evaluation/{contracts,metrics,evaluationRunner,traceFormatter,diagnostics}.ts`：JSON 合同、固定时间/无网络 runner、结果结构与身份验证、指标、调试 trace 和调用内计时观察器。
+- 复用未改变的 RankingService 评分/MMR 与 Phase 6 evidence formatter。评测标注与 known IDs 由 fixture 提供；缺失标注返回 null/warning，不伪造 0 分。Precision@K 固定 K 分母；MRR 限 Top-K；NDCG 二元相关性；diversity 为平均成对 token Jaccard 距离，novelty 为精确已知 ID 排除率。它们仅是工程回归指标。
+- 证据 availability / matched-topic coverage / grounded reason rate / unsupported count：引用必须存在且唯一、候选与主题必须对应；直接摘要片段必须来自输入摘要；summary、refs、topics、confidence 必须能从所供证据通过当前 formatter 重建。合法证据不足不计 unsupported，也不计 grounded。
+- Tool 的内部 onDiagnostic/diagnosticClock 装配 hook 观察 discovery/ranking/evidence/total；total 包括画像、库快照和曝光保存。仅记录 duration、timeout、fallback、failureCode；失败/取消仍发记录，回调异常不能让业务失败。无正文、标识或错误文本持久收集，不进入 Tool schema/UI/模型结果。
+- Ranking semantic deadline 仅增加 timedOut/semanticTimedOut 标记；evidence deadline 使用类型化内部超时并追加 evidence_source_timeout，旧 fallback/partial failure 仍保留。未调整算法、预算、调用数或重试行为。
+- `.gitignore` 仅放行新的 `docs/phase7-host-validation.md`；架构基线更新实际评测范围和延期项。
+
+#### Benchmark Results
+
+| 固定输入（Top-1） | 输出 | P@K / R@K / MRR / NDCG@K | Availability / Coverage / Grounding | Unsupported |
+| --- | --- | --- | --- | --- |
+| A 强主题匹配 | A 位于 B 前 | 1 / 1 / 1 / 1 | 1 / 1 / 1 | 0 |
+| B 负偏好 | A 位于 Y 前；Top-2 专项确认 Y preference/baseScore=0 | 1 / 1 / 1 / 1 | 1 / 1 / 1 | 0 |
+| C 无摘要 | C 保留，evidence_unavailable，空引用 | 1 / 1 / 1 / 1 | 0 / 0 / 0 | 0 |
+
+三例 Top-1 diversity=0，显式 known=[] 时 novelty=1；另有非平凡手算指标测试（P=1/3、R=1/2、MRR=1/2、NDCG≈0.38685、novelty=1/3、完全不重合三项 diversity=1）。重复执行、候选换序、JSON 往返结果一致，平分按 ID 稳定排序。
+
+#### Validation / Tests
+
+使用工作区 `.toolchains/node-v24.20.0-linux-x64/bin` 的 Node 24.20.0，将其前置 PATH；日志 `/tmp/phase7-*.log` 为临时复现材料。
+
+| 实际命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/evaluation/**/*.test.ts'` | 28 passing；新增指标/异常/确定性 19 项，诊断与 Tool 集成 9 项 |
+| `npm run test:unit` | 4461 passing / 1 pending（40s），较 Phase 6 增加 28 项；既有 Profile/Candidate/Ranking/Feedback/Evidence 测试文件均未修改 |
+| `npm run build` | exit 0，XPI 打包成功，Build finished in 0.819 s，内置 typecheck 通过 |
+| `npm run check:cycles` | Import-cycle check passed (0 runtime, 0 static allowlisted) |
+| 修改范围 ESLint / Prettier | 通过；仅新增测试应用 mocha/no-mocha-arrows 自动修正 |
+| 附加测试 TypeScript 检查 | 使用继承主配置并加入 node/mocha/sandbox types 的临时 .scaffold/phase7-test-tsconfig.json；覆盖 test/evaluation 与导入源码 |
+| `git diff --check` | 通过 |
+
+初始 tsx 测试受沙箱 IPC EPERM 阻止，获批准后在沙箱外运行离线测试；构建在当前环境成功。首轮新增测试类型检查发现 fixture 缺 userText，已补齐；初始临时配置缺宿主/Mocha ambient types，已纠正。未更改依赖或旧测试规避问题。
+
+真实 Zotero / SQLite restart / group library / OpenAlex / embedding smoke 均 **NOT EXECUTED**；本环境没有已连接宿主，未访问真实 provider。手工流程、通过标准和记录模板位于 `docs/phase7-host-validation.md`，不能将 Node 单测写为宿主通过。
+
+#### Red-Line Review / Remaining Limitations
+
+- 无排序算法变更、LLM ranking、新的自动反馈优化、训练、用户追踪、外部 analytics、UI、Scheduler/Digest、向量库、同步、多 Agent 或新的 Zotero 条目写操作。现有 Phase 5 内部曝光/反馈存储保持原链路。
+- 真实宿主和 provider 验收尚未执行；group library 权限与真实重启恢复仍需按文档验证。
+- 合成三例没有真实用户标注、temporal holdout、ablation、Agent tool/workflow 指标或统计显著性；无法据此证明推荐有效。
+- Grounding 只保证当前固定模板与所供证据的一致性，不能验证任意自然语言、出版物真实性或最终 Agent 转述；库内易变证据不做历史重放。
+- Novelty 只识别标注的精确 candidate ID，不能识别未标注的 DOI/版本别名；diversity 为词汇工程代理。
+- 只有明确暴露的 embedding/evidence deadline 能归因 timeout；discovery 通用 provider 错误可能隐藏底层超时。计时为内部 opt-in，未记录真实延迟基准或性能阈值。
+- 保留上游 1 项 pending（DeepSeek Chrome 102 selector contract），非本阶段引入。
 
 ### 2026-09-09 / recommendation-phase6-evidence-grounded
 
@@ -847,6 +907,12 @@ git diff --check
 - Phase 2 验收限制，优先级中：尚未在真实 Zotero.DB 宿主、插件重启和 group library UI 中 smoke test；Node SQLite seam 不能替代该验证。
 
 ## Handoff Notes
+
+### Phase 7 当前交接（2026-09-09）
+
+- 评测入口 `runRecommendationEvaluation` / `evaluateRecommendationResults`；手工宿主流程见 phase7-host-validation.md。phase-7 标签定位实现提交，后续交付日志不移动标签。
+- 新增 28 项；全量 4461 passing / 1 pending。无排序或反馈策略变更。评测输出与调用内计时分离，不自动收集或上传数据。
+- 下一步执行真实 Zotero、重启、group library 和 provider smoke，并记录实际结果；当前不声称已在宿主验收。
 
 ### Phase 6 当前交接（2026-09-09）
 
