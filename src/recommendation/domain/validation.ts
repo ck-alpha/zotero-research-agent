@@ -1,5 +1,5 @@
 import type { ExplicitPreferences, ResearchProfile } from "./profile";
-import type { RecommendationCandidate } from "./candidate";
+import type { CandidateProvenance, RecommendationCandidate } from "./candidate";
 import type { RecommendationFeedback } from "./feedback";
 import type { RecommendationImpression } from "./recommendation";
 
@@ -22,6 +22,9 @@ export function assertNonEmptyId(
 
 const text: Check = (value, path) => {
   if (typeof value !== "string") invalid(path, "string");
+};
+const boolean: Check = (value, path) => {
+  if (typeof value !== "boolean") invalid(path, "boolean");
 };
 const finite: Check = (value, path) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -153,6 +156,27 @@ const scoreShape = {
   baseScore: optional(finite),
   finalScore: optional(finite),
 };
+const provider = oneOf("openalex", "arxiv", "europepmc");
+const queryProvenance = object({
+  route: oneOf("profile_query"),
+  provider,
+  providerRank: integer(1),
+  query: assertNonEmptyId,
+  topicId: optional(assertNonEmptyId),
+  focus: optional(boolean),
+});
+const seedProvenance = object({
+  route: oneOf("seed_recommendation"),
+  provider,
+  providerRank: integer(1),
+  seedPaperId: assertNonEmptyId,
+});
+const provenance: Check = (value, path) => {
+  const route = (value as { route?: unknown } | null)?.route;
+  if (route === "profile_query") queryProvenance(value, path);
+  else if (route === "seed_recommendation") seedProvenance(value, path);
+  else invalid(`${path}.route`, "profile_query | seed_recommendation");
+};
 const candidateShape = {
   candidateId: assertNonEmptyId,
   title: assertNonEmptyId,
@@ -162,12 +186,43 @@ const candidateShape = {
   doi: optional(assertNonEmptyId),
   arxivId: optional(assertNonEmptyId),
   openAlexId: optional(assertNonEmptyId),
+  sourceUrl: optional(assertNonEmptyId),
+  openAccessUrl: optional(assertNonEmptyId),
+  provenance: array(provenance, 1),
   sources: array(oneOf("profile_query", "seed_recommendation"), 1),
   seedPaperIds: optional(ids),
   scores: object(scoreShape),
   evidence: optional(object({ evidenceRefs: ids })),
 };
 const candidate = object(candidateShape);
+
+function assertCandidateProvenanceConsistency(
+  value: RecommendationCandidate,
+  path: string,
+): void {
+  const routes = new Set(value.provenance.map((entry) => entry.route));
+  const seeds = new Set(
+    value.provenance.flatMap((entry) =>
+      entry.route === "seed_recommendation" ? [entry.seedPaperId] : [],
+    ),
+  );
+  if (
+    value.sources.length !== routes.size ||
+    new Set(value.sources).size !== routes.size ||
+    value.sources.some((route) => !routes.has(route))
+  )
+    invalid(`${path}.sources`, "unique routes consistent with provenance");
+  const seedPaperIds = value.seedPaperIds ?? [];
+  if (
+    seedPaperIds.length !== seeds.size ||
+    new Set(seedPaperIds).size !== seeds.size ||
+    seedPaperIds.some((seed) => !seeds.has(seed))
+  )
+    invalid(
+      `${path}.seedPaperIds`,
+      "unique seed IDs consistent with provenance",
+    );
+}
 const feedback = object({
   eventId: assertNonEmptyId,
   paperId: assertNonEmptyId,
@@ -206,6 +261,16 @@ export function assertRecommendationCandidate(
   value: unknown,
 ): asserts value is RecommendationCandidate {
   candidate(value, "candidate");
+  assertCandidateProvenanceConsistency(
+    value as RecommendationCandidate,
+    "candidate",
+  );
+}
+
+export function assertCandidateProvenance(
+  value: unknown,
+): asserts value is CandidateProvenance {
+  provenance(value, "provenance");
 }
 
 export function assertRecommendationFeedback(
@@ -219,6 +284,12 @@ export function assertRecommendationImpression(
 ): asserts value is RecommendationImpression {
   impression(value, "impression");
   const { candidates } = value as RecommendationImpression;
+  candidates.forEach((paper, index) =>
+    assertCandidateProvenanceConsistency(
+      paper,
+      `impression.candidates[${index}]`,
+    ),
+  );
   if (
     new Set(candidates.map((paper) => paper.candidateId)).size !==
     candidates.length

@@ -74,6 +74,21 @@ export function makeCandidate(): RecommendationCandidate {
     doi: "10.1234/example",
     arxivId: "2609.00001",
     openAlexId: "W123",
+    provenance: [
+      {
+        route: "profile_query",
+        provider: "openalex",
+        providerRank: 3,
+        query: "Recommendation",
+        topicId: "topic-1",
+      },
+      {
+        route: "seed_recommendation",
+        provider: "openalex",
+        providerRank: 2,
+        seedPaperId: "paper:ABC123",
+      },
+    ],
     sources: ["profile_query", "seed_recommendation"],
     seedPaperIds: ["paper:ABC123"],
     scores: {

@@ -1,8 +1,9 @@
 import type { AgentToolContext, AgentToolDefinition } from "../../types";
 import type { ProfileService } from "../../../recommendation/profile/profileService";
-import { assertLibraryID } from "../../../recommendation/profile/identity";
-import { UtilityTopicExtractor } from "../../../recommendation/profile/utilityTopicExtractor";
 import { fail, ok } from "../shared";
+import { createProfileTopicExtractor, resolveProfileLibraryID } from "./shared";
+
+export { resolveProfileLibraryID } from "./shared";
 
 export const PROFILE_TOOL_LIMITS = Object.freeze({
   topics: 20,
@@ -13,20 +14,6 @@ export const PROFILE_TOOL_LIMITS = Object.freeze({
   titleChars: 300,
 });
 type ProfileGetInput = { refresh: boolean };
-
-/** Request scope wins. Invalid supplied scope must never fall back to another library. */
-export function resolveProfileLibraryID(context: AgentToolContext): number {
-  const libraryID =
-    context.request.libraryID !== undefined
-      ? context.request.libraryID
-      : context.item?.libraryID !== undefined
-        ? context.item.libraryID
-        : context.request.item?.libraryID !== undefined
-          ? context.request.item.libraryID
-          : context.request.turnPaperScope?.libraryID;
-  assertLibraryID(libraryID);
-  return libraryID;
-}
 
 export function createResearchProfileGetTool(
   service: Pick<ProfileService, "get">,
@@ -77,18 +64,10 @@ export function createResearchProfileGetTool(
           "research_profile_get requires a valid current libraryID in Agent context",
         );
       }
-      const request = context.request;
       const result = await service.get(libraryID, {
         refresh: input.refresh,
         signal: context.signal,
-        extractor: new UtilityTopicExtractor({
-          model: request.model || context.modelName,
-          apiBase: request.apiBase,
-          apiKey: request.apiKey,
-          authMode: request.authMode,
-          providerProtocol: request.providerProtocol,
-          profileOverride: request.advanced?.profileOverride,
-        }),
+        extractor: createProfileTopicExtractor(context),
       });
       const p = result.profile;
       const limits = PROFILE_TOOL_LIMITS;

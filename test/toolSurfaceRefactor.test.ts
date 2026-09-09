@@ -231,6 +231,7 @@ describe("semantic tool surface", function () {
       "note_write",
       "note_write_batch",
       "paper_read",
+      "research_candidate_discover",
       "research_profile_get",
       "revert_changes",
       "run_command",

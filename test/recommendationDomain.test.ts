@@ -177,6 +177,14 @@ describe("recommendation domain contracts", function () {
       title: "Unknown metadata",
       authors: [],
       sources: ["profile_query"],
+      provenance: [
+        {
+          route: "profile_query",
+          provider: "openalex",
+          providerRank: 1,
+          query: "unknown metadata",
+        },
+      ],
       scores: {},
     });
     for (const key of Object.keys(value.scores)) {

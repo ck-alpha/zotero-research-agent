@@ -784,6 +784,10 @@ interface RecommendationCandidate {
   arxivId?: string;
   openAlexId?: string;
 
+  provenance: CandidateProvenance[];
+  sourceUrl?: string;
+  openAccessUrl?: string;
+
   sources: CandidateSource[];
 
   seedPaperIds?: string[];
@@ -1091,6 +1095,23 @@ library scope 来自当前请求/上下文且必须有效；普通聊天、Codex
 ---
 
 ## Phase 3 — Candidate Discovery
+
+Phase 3 已实现两路召回：完整持久 ResearchProfile 的确定性 topic query（可加当前 turn focus）与
+当前 LibrarySnapshot 中 representative paper DOI 的 seed recommendations。生产 provider 仅 OpenAlex；
+Agent adapter 复用现有 LiteratureSearchService，推荐域只依赖纯 LiteratureDiscoverySource。
+Seed 无 DOI 时跳过，不降级为 keyword search。最多 5 queries / 4 seeds，分别 12 / 8 条，
+共享并发上限 3、池上限 80；支持 partial failure 和 AbortSignal。
+
+Candidate provenance 为必需的结构化 route/provider/providerRank/query/topicId/focus 或 seedPaperId；
+sources/seedPaperIds 从 provenance 派生并由 runtime guard 校验。先对整个 eligible library 做
+exact DOI / 保守书目 novelty 排除，再做跨路 deterministic dedup/merge，最后才交给未来 Ranking。
+外部身份优先级 DOI → arXiv → OpenAlex → 保守书目；metadata 不足时保留独立 occurrence ID。
+Phase 3 CandidateScores 均为空，数组为 discovery order，不是 final personalized ranking。
+Candidate Pool 按设计不持久化，无 CandidateSetStore，也不对池批量读取 PDF/RAG。
+
+`research_candidate_discover({focus?,limit?})` 仅 local Agent 暴露，read、无需确认；scope 来自当前上下文，
+直接调用 ProfileService 加载完整画像。focus 不改变长期 profile/version；Tool 默认展示 30 条、最多 50 条，
+abstract snippet 最多 400 字符；截断明确报告。其他聊天/外部后端未接入。
 
 实现：
 

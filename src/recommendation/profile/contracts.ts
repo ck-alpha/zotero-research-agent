@@ -2,6 +2,8 @@ export interface ResearchPaperSignal {
   itemId: string;
   title: string;
   abstract?: string;
+  /** Optional lookup identity; never an interest signal. */
+  doi?: string;
   authors: string[];
   manualTags: string[];
   automaticTags: string[];

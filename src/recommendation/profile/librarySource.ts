@@ -45,6 +45,10 @@ export class IndexedResearchLibrarySource implements ResearchLibrarySource {
         itemId: paperIdForLibraryItem(libraryID, item.itemId),
         title: item.title.trim(),
         abstract: item.abstractNote || undefined,
+        doi:
+          typeof item.doi === "string"
+            ? item.doi.trim() || undefined
+            : undefined,
         authors: strings(item.creators),
         manualTags: strings(item.tags),
         automaticTags: strings(item.automaticTags),

@@ -1,5 +1,10 @@
 import { AgentToolRegistry } from "./registry";
 import { createResearchProfileGetTool } from "./recommendation/researchProfileGet";
+import { createResearchCandidateDiscoverTool } from "./recommendation/researchCandidateDiscover";
+import { AgentLiteratureDiscoverySource } from "../services/recommendationLiteratureSource";
+import { LiteratureSearchService } from "../services/literatureSearchService";
+import { IndexedResearchLibrarySource } from "../../recommendation/profile/librarySource";
+import { libraryIndexService } from "../../services/libraryIndexService";
 import { createProductionProfileService } from "../../recommendation/profile/production";
 import { PdfService } from "../services/pdfService";
 import { RetrievalService } from "../services/retrievalService";
@@ -670,6 +675,17 @@ export function createBuiltInToolRegistry(
   registry.register(createToolResultReadTool());
   registry.register(
     createResearchProfileGetTool(createProductionProfileService()),
+  );
+  registry.register(
+    createResearchCandidateDiscoverTool(
+      createProductionProfileService(),
+      new IndexedResearchLibrarySource(libraryIndexService),
+      (context) =>
+        new AgentLiteratureDiscoverySource(
+          new LiteratureSearchService(deps.zoteroGateway),
+          context,
+        ),
+    ),
   );
 
   const legacyTools: AgentToolDefinition<any, any>[] = [

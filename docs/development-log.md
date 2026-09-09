@@ -5,12 +5,12 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-2`，对应本轮 Research Profile Memory 阶段提交；历史检查点 `phase-1` 保留。
-- Current HEAD / Phase 2 commit：由带注释标签 `phase-2` 标识，可用 `git rev-parse phase-2^{commit}` 获取完整哈希；阶段起点为 `10ed87677bc2afdfe17ede174f80f23834fdc500`。提交内不记录自身哈希，避免自引用导致哈希失效。
-- Current phase: Phase 2 — Research Profile Memory（实现与自动化验收完成，宿主 smoke test 待执行）。
-- Last verified date: 2026-09-07 (UTC)。
-- 修改前 working tree：仅 `doc/codex_phase0_phase1_prompt.md`、`doc/research_agent_architecture_baseline.md` 为用户已有的未跟踪文件；没有已跟踪文件修改。
-- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，阶段要求位于 [doc/codex_phase0_phase1_prompt.md](../doc/codex_phase0_phase1_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
+- Phase checkpoint: `phase-3`，对应本轮 Personalized Candidate Discovery 阶段提交；历史 `phase-1` / `phase-2` 保留。
+- Current HEAD / Phase 3 commit：由带注释标签 `phase-3` 标识，可用 `git rev-parse phase-3^{commit}` 获取完整哈希；阶段起点为 `279ccc62d959a52a518dff7a812c3a1856d1966b`（Phase 2）。提交内不记录自身哈希，避免自引用导致哈希失效。
+- Current phase: Phase 3 — Personalized Candidate Discovery（实现与自动化验收完成，真实宿主 smoke test 待执行）。
+- Last verified date: 2026-09-09 (UTC)。
+- Phase 3 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase3_candidate_discovery_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
+- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase3_candidate_discovery_prompt.md](../doc/codex_phase3_candidate_discovery_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
 
 ## Current Architecture Status
 
@@ -23,18 +23,165 @@
 - ProfileService：首次构建、缓存读取、显式重建和偏好更新，统一管理版本、警告和 CAS；冲突明确失败，不隐藏重试。
 - `research_profile_get`：已按 built-in pattern 注册；read、无需 Zotero 写确认；scope 来自请求/上下文，输出有界结构化摘要。
 - 当前链路：LibraryIndex → ResearchLibrarySource → ResearchPaperSignals + 可选已验证主题 → ProfileBuilder / Scoring → ResearchProfile → SQLite ProfileStore → 插件 Agent Tool。
-- 尚未实现本项目的 Candidate Discovery / Merge / Dedup、Ranking / MMR、生产 FeedbackStore / ImpressionStore、推荐 UI / Scheduler / Skill / Action、推荐 RAG、Embedding、跨设备同步。
+- Profile Query Recall / Seed Recall / Candidate Merge & Dedup / Whole-library Novelty Filter：已实现；生产 provider 为 OpenAlex，候选评分为空，按发现顺序输出。
+- `research_candidate_discover`：已实现，仅插件 Agent，直接读取完整持久画像；focus 临时生效，候选池不持久化。
+- Phase 3 链路：完整 ResearchProfile + 当前 LibrarySnapshot → 双路 Recall → LiteratureSearchService adapter → Normalize → 全库排除 → Dedup/Merge → Candidate Pool → Agent Tool。
+- 尚未实现 Ranking / MMR / Feedback Learning、生产 FeedbackStore / ImpressionStore、推荐 UI / Scheduler / Skill / Action、Recommendation Evidence / 推荐 RAG、Embedding、跨设备同步。
 
-| 后端                                                    | Phase 2 支持状态                                      |
-| ------------------------------------------------------- | ----------------------------------------------------- |
-| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get`；画像核心可无模型独立运行 |
-| 普通聊天                                                | 未接入                                                |
-| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝      |
-| Claude Code                                             | 未接入；Tool 不在外部目录                             |
-| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                      |
-| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                    |
+| 后端                                                    | Phase 3 支持状态                                                                       |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get` 与 `research_candidate_discover`；画像核心可无模型独立运行 |
+| 普通聊天                                                | 未接入                                                                                 |
+| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝                                       |
+| Claude Code                                             | 未接入；Tool 不在外部目录                                                              |
+| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                                                       |
+| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                     |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase3-candidate-discovery
+
+#### Goal
+
+完成 ResearchProfile → Multi-route Candidate Discovery → Novel Candidate Pool。只决定哪些论文进入候选池，个性化排序留到 Phase 4。
+
+#### Git Baseline
+
+- Branch：`main`；starting commit：`279ccc62d959a52a518dff7a812c3a1856d1966b`（`phase-2`）；ending commit 由 `phase-3^{commit}` 标识；upstream 固定基线不变。
+- 初次交付保留为本地代码、测试及日志更新。2026-09-09 用户明确要求“提交上传到远程仓库”，本次执行阶段 Git 交付：提交 `feat(recommendation): add personalized candidate discovery`、带注释标签 `phase-3`，上传个人仓库 `origin/main` 和同名标签；不修改 upstream 或历史标签。推送后核对远端分支与标签实际 commit。
+- 原有分析目录、分析报告和阶段需求文档保持原样；本次提交纳入 `doc/codex_phase3_candidate_discovery_prompt.md`，独立分析目录/报告不纳入。未修改依赖、插件名称或 addon ID；构建产物 XPI 不上传为源码或 Release。
+- 本次上传前未再修改代码，沿用已完成的 4350 passing / 1 pending、typecheck、build 验收；仅更新 Git 交接记录并检查格式与 staged diff。
+
+#### Files Changed
+
+| 文件                                                                          | 用途                                                    |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `src/recommendation/candidate/contracts.ts`                                   | 纯外部文献接口、发现输入输出与诊断                      |
+| `src/recommendation/candidate/config.ts`                                      | 集中 recall / pool / Tool 输出上限                      |
+| `src/recommendation/candidate/queryRecall.ts`                                 | weight×confidence 规划、负主题排除、focus 与 query 去重 |
+| `src/recommendation/candidate/seedRecall.ts`                                  | 当前库 DOI 种子映射、代表论文顺序和跳过诊断             |
+| `src/recommendation/candidate/identity.ts`                                    | DOI/arXiv/OpenAlex/保守书目身份、冲突检查               |
+| `src/recommendation/candidate/normalize.ts`                                   | 不可信外部行标准化和来源构建                            |
+| `src/recommendation/candidate/deduplicate.ts`                                 | 全库 novelty index、跨路合并、稳定池截断                |
+| `src/recommendation/candidate/candidateService.ts`                            | scope 校验、有界调度、取消、部分失败与最终 guard        |
+| `src/recommendation/domain/candidate.ts`                                      | 必需 provenance，可选 sourceUrl/openAccessUrl           |
+| `src/recommendation/domain/validation.ts`                                     | 路由专属 provenance 校验及 sources/seedPaperIds 一致性  |
+| `src/recommendation/profile/contracts.ts`、`librarySource.ts`                 | 增加/映射可选 DOI，空值为 undefined                     |
+| `src/agent/services/recommendationLiteratureSource.ts`                        | 当前 context 的 OpenAlex service adapter                |
+| `src/agent/services/literatureSearchService.ts`                               | 导出现有类型、OpenAlex 请求传递 AbortSignal；保留原 API |
+| `src/agent/tools/recommendation/researchCandidateDiscover.ts`                 | 本地 Agent Tool、参数校验与有界摘要                     |
+| `src/agent/tools/recommendation/shared.ts`、`researchProfileGet.ts`           | 小型 scope/extractor helper 复用                        |
+| `src/agent/tools/index.ts`                                                    | 新 Tool 生产装配                                        |
+| `test/recommendationCandidatePlanning.test.ts`                                | query/seed 规划测试                                     |
+| `test/recommendationCandidateService.test.ts`                                 | 双路、失败、取消、并发、顺序、预算与诊断                |
+| `test/recommendationCandidateIdentity.test.ts`                                | 身份、novelty、provenance、late bridge 与 DOI 不改画像  |
+| `test/recommendationCandidateTool.test.ts`                                    | adapter、实际 fetch seam、Tool 暴露和 SQLite 集成切片   |
+| `test/helpers/recommendationFixtures.ts`、`test/recommendationDomain.test.ts` | 既有 Candidate fixture 补来源                           |
+| `test/toolSurfaceRefactor.test.ts`                                            | 更新本地模型可见 Tool 目录预期                          |
+| `docs/research_agent_architecture_baseline.md`、`docs/development-log.md`     | Phase 3 已确定架构事实、验收与交接                      |
+
+#### What Changed
+
+实现完整持久画像和当前全库 snapshot 驱动的候选发现。适配层直接使用 LiteratureSearchService，不内部调用 Tool Registry，也不重新实现 OpenAlex client。外部结果先归一化，再排除全库已有论文，最后跨路合并；出站候选通过 assertRecommendationCandidate。
+
+#### Architecture Decisions
+
+- CandidateService 仅依赖推荐领域接口，不导入 Agent Runtime / AgentToolContext / DOM / ZoteroPane。Agent context 由 integration adapter 持有。
+- ResearchPaperSignal DOI 只用于种子/库内身份；ProfileBuilder 不把 DOI 当兴趣信号，固定输入加 DOI 得到完全相同画像。
+- 完整已存在画像直接加载，无自动 refresh；缺失画像复用 Phase 2 首建规则。focus 只进入当前 query plan，不保存到 profile 或版本。
+- Candidate 增加必需 provenance；既有测试 fixture 同步更新。当前没有生产 Candidate/Impression 存储，因此不新增持久化迁移。
+- 所有 CandidateScores 为 `{}`。Candidate Pool order is discovery order, not final personalized ranking.
+- 去重中的迟到 identifier bridge 合并早先不同分组时，按原始发现位置重新合并 metadata/provenance，避免异步或分组合并顺序改变字段优先级。
+
+#### Candidate Discovery Boundary
+
+输入 scope 必须满足 profileId=`library:<libraryID>` 且 snapshot.libraryID 一致；snapshot 内重复/非法/异库论文身份或基础元数据损坏明确失败。计划中的缺失/异库 representative paper 计入跳过诊断。服务共享最多 3 个 worker；所有结果按计划顺序处理，而非网络完成顺序。
+
+单 route 失败保留其余成功结果并返回紧凑 warning code 和成功/失败计数；全部已计划 route 失败则整体失败。成功但为空和无可用输入都返回空池，后者有明确警告。AbortSignal 传到 OpenAlex fetch；即使 fake dependency 不响应 signal，取消也能及时返回且不启动后续排队请求。无重试、无递归调用。
+
+#### Recall Routes
+
+| 边界                                              | 最终值                       |
+| ------------------------------------------------- | ---------------------------- |
+| maxQueries / resultsPerQuery                      | 5 / 12                       |
+| maxSeeds / resultsPerSeed                         | 4 / 8                        |
+| maxConcurrentRequests / maxCandidatePool          | 3 / 80                       |
+| maxFocusChars                                     | 300，空白/超长/非法类型拒绝  |
+| toolDefaultLimit / toolMaxLimit                   | 30 / 50                      |
+| toolAbstractSnippetChars                          | 400                          |
+| toolTitleChars / toolMaxAuthors / toolAuthorChars | 300 / 20 / 120，额外显示边界 |
+
+主题按正有效 weight×confidence 降序，再按稳定 topic ID/label；显式负主题不参与 profile query。focus 第一条，最多再选 4 个主题。query 使用 NFC/trim/空白折叠/大小写归一比较，provenance 保留显示查询。
+
+种子按 representativePapers 顺序选最多 4 个可用当前库 DOI；无 DOI 跳过，不用 title fallback。重复 representative item ID 不重复请求；不同 item ID 即使 DOI 相同仍保留各自种子 provenance，上限仍为 4。生产仅 OpenAlex search / recommendations related_works；每个 seed route 最多 DOI lookup + related batch 两次串行 HTTP，query 最多一次；逻辑最大 9 routes、13 HTTP、92 条原始返回预算。上游超量返回按单路 limit 处理并报告截断。
+
+#### Identity / Dedup Policy
+
+优先级 DOI → arXiv → OpenAlex → conservative bibliographic fallback。DOI 去 doi: 前缀/受信 doi.org URL、trim、小写；OpenAlex URL/W ID 归一为 W+数字；arXiv URL/ID 去版本号，同论文不同版本合并。未知 URL host 不作为强 ID。
+
+书目 fallback 使用 NFC/大小写/空白归一的 exact title + year，或 exact title + first author；两个已知年份冲突时不合并。标题需至少 20 个字母/数字且至少 3 个词（长中日韩标题另有字符条件），短/泛化标题不凭标题合并；C/C++ 等标点仍保留，无 fuzzy/semantic matching。没有强 ID 和可靠书目键时用 deterministic `unresolved:<provenance>` occurrence ID，保留跨路歧义，不伪称同一论文。
+
+重复来源按 route/provider/providerRank/query/topicId/focus 或 seedPaperId 去重；sources 和 seedPaperIds 从 provenance 派生并由 runtime guard 校验。强 ID 冲突阻止弱 ID/书目误合并。非空 metadata 优先、较完整 abstract 优先、其他冲突按稳定 discovery order；候选池截断不使用分数。
+
+示例：同论文的 provenance 可同时含 `{route:"profile_query",provider:"openalex",providerRank:1,query:"Agents",topicId:"topic:agents"}` 和 `{route:"seed_recommendation",provider:"openalex",providerRank:2,seedPaperId:"library:1:item:8"}`。
+
+#### Novelty Filter
+
+从整个 eligible ResearchLibrarySnapshot 建 canonical DOI set 和保守书目索引，不只排除 representativePapers。优先 DOI exact match；缺少可比 DOI 时使用上述 exact 书目规则，有冲突 DOI 不仅凭标题排除。排除计数按 raw candidate occurrence，重复合并计数按剩余候选减少量，finalCandidateCount 为内部池大小。
+
+#### Agent Tool
+
+`research_candidate_discover({focus?:string,limit?:integer})`；禁止模型提供 libraryID/profileId/topics/seed IDs/provider URL。scope 复用 Phase 2 request/context helper；read、requiresConfirmation=false、exposure=model、localAgentOnly=true。
+
+输出 profileId/profileVersion/generatedAt/focus、candidateCount、候选 metadata/标识符/sources/seedPaperIds/provenance、diagnostics 和 warnings。candidateCount 为实际 Tool 展示数量，diagnostics.finalCandidateCount 为内部池数量；截断返回 candidate_tool_output_truncated，无“低排名”含义。摘要/title/authors 有界，既有 profile_tool 不作为内部调用。普通聊天、Codex App Server、Claude Code、WebChat/MCP 未接入。
+
+#### Tests
+
+使用已有 Node v24.20.0，不安装依赖，不调用真实模型/API。PATH 为 `/home/linchengkai/new-project/.toolchains/node-v24.20.0-linux-x64/bin:$PATH`。
+
+| 命令 / 检查                                                                                                                                                                                                                                                     | 结果                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                                                                                                                                                                                                                                             | 通过；build 同样内置执行                                                                    |
+| `node --import tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/recommendation*.test.ts' test/toolSurfaceRefactor.test.ts test/searchLiteratureOnlineTool.test.ts test/actionCompatibility.test.ts test/agentHitlReviewWorkflow.test.ts` | 190 passing；覆盖 Phase 1/2/3 与 generic literature regression                              |
+| `npm run test:unit`                                                                                                                                                                                                                                             | 4350 passing、1 pending；比 Phase 2 新增 35 项，无新增失败                                  |
+| `npm run build`                                                                                                                                                                                                                                                 | 通过；`.scaffold/build/llm-for-zotero.xpi`                                                  |
+| `node node_modules/typescript/bin/tsc --noEmit -p /tmp/phase3-tsconfig.json`                                                                                                                                                                                    | 通过，额外覆盖 recommendation 系列测试及其 imports；既有 toolSurfaceRefactor 只做运行时回归 |
+| `eslint <本轮 TS 文件>` / `prettier --check <本轮 TS 文件> docs/development-log.md`                                                                                                                                                                             | 通过                                                                                        |
+| `npm run check:cycles` / `git diff --check`                                                                                                                                                                                                                     | 通过                                                                                        |
+| Phase 2 Zotero host smoke（personal first build/cached load/refresh、重启 reload、group scope）                                                                                                                                                                 | not executed；环境未找到 Zotero 可执行文件，且无 DISPLAY/WAYLAND_DISPLAY                    |
+| Live OpenAlex smoke                                                                                                                                                                                                                                             | not executed；query=0、seed=0，raw/final count 不适用；本轮不访问真实 provider              |
+
+测试与构建首次在沙箱内分别因 tsx IPC `EPERM` / registry DNS `EAI_AGAIN` 失败；经环境权限审查后在沙箱外运行标准命令通过。focused 使用 `node --import tsx` 可在沙箱内运行同一 Mocha 测试集合。首次整合修复了 test SQLite seam 注入需工厂函数、fetch seam 缺少 gateway stub，以及 guard 的 unknown 类型断言；不是隐藏跳过失败用例。最终额外类型检查还修复了集中 focus 默认值推断为字面量 300 的类型问题及测试 helper 的 provenance 联合类型。曾并行运行全量测试/tsc/build 时，既有 importCycles 单测触发 2 秒超时；独立 cycles 检查通过，最后串行重跑标准全量测试。
+
+新集成测试从 LibraryIndex fixture 经实际 IndexedResearchLibrarySource / ProfileBuilder / SqliteProfileStore / ProfileService 到 fake literature source、CandidateDiscoveryService、Tool，验证完整画像第 25 个主题被使用、两路召回、非代表论文库内排除、provenance、输出截断、signal 和 profile revision 不变。SQLite seam 是 Node 的真实 SQLite 引擎，但不能替代 Zotero.DB 宿主验收。
+
+#### Architecture Red-Line Review
+
+- [x] Phase 2 Profile Memory 可独立工作，DOI 不改变 topic scoring。
+- [x] Candidate domain 不依赖 Agent Runtime/UI；复用 LiteratureSearchService，无重复 client。
+- [x] 双路召回、无 keyword 伪 seed、完整 provenance/runtime guard、全库 novelty、集中 identity/deterministic dedup。
+- [x] 部分失败可返回成功候选；并发有界；signal 传递且取消停止排队。
+- [x] scores 为空；无 personalized ranking/MMR/CandidateSet 持久化。
+- [x] 无 query LLM、批量 PDF/RAG、推荐 UI、Scheduler、反馈学习或项目运行时 Multi-Agent。
+- [x] Profile 仍独立持久化，不写入 conversationMemory；LLM 结构校验边界不变。
+- [x] Tool 仅本地 Agent，无 Zotero 内容写入或绕过 Action Contract/Change Journal。
+- [x] generic literature regression、日志及架构更新完成。
+
+#### Known Issues
+
+- 真实 Zotero 宿主/重启/group UI、实时 OpenAlex smoke 未执行；不能据自动化 seam 声称宿主或 live API 已验收。
+- OpenAlex-only 生产召回；无 DOI 种子跳过；没有 fuzzy dedup 或 freshness filter。保守书目键不保证识别所有同名/变名或元数据不足的论文。
+- 额外严格检查若包含既有 `test/toolSurfaceRefactor.test.ts`，会出现其旧 request/IOUtils fixture 类型错误；已取 HEAD 原文在相同上下文独立复现。这些历史问题不属于主 tsconfig 检查范围，本轮只更新其 Tool 目录字符串，运行时回归通过。推荐系列测试额外严格检查通过。
+- 上游已有 1 项 pending（DeepSeek Chrome 102 DOM selector 测试）未修改。构建已有 NODE_TLS_REJECT_UNAUTHORIZED=0 警告，本轮未设置该环境值或升级 scaffold。
+- 已存在 LiteratureSearchService 会预先过滤当前活动论文并限制部分 provider abstract；providerRank 表示该 service 返回序列的位置，不声称完整原始远端排名。
+
+#### Deferred Work
+
+Phase 4 ranking/features/MMR；freshness recall filter、更多 provider、无 DOI seed 的可靠标识符解析、跨设备身份、反馈/曝光持久化、推荐证据 Top-K enrichment、UI/Skill/Scheduler、运行时多 Agent。Phase 3 by design 不持久化 CandidateSet，无 CandidateSetStore/TTL/SQLite candidate 表。
+
+#### Next Recommended Step
+
+先补真实 Zotero smoke，再从 CandidateDiscoveryService 的完整候选/provenance 接入独立 Phase 4 Feature Computation → Personalized Ranker → MMR → Top-K → research_recommend。本阶段未开始实现这些步骤。
 
 ### 2026-09-07 / recommendation-phase2-profile-memory
 
@@ -298,6 +445,11 @@ git diff --check
 
 ## Open Decisions
 
+- **Phase 3 External Candidate Identity（已决定）**：DOI/arXiv/OpenAlex/保守书目；歧义项使用 provenance occurrence ID。详见本轮 Identity / Dedup Policy。
+- **Phase 3 Novelty / Provenance（已决定）**：全 eligible library exact DOI/书目过滤；provenance 必需，派生 sources/seedPaperIds 并校验一致性；合并保留最早发现位置。
+- **Phase 3 Recall / Failure（已决定）**：5×12 query、4×8 seed、3 并发、80 池；支持 partial success、整体 cancellation；所有依赖失败明确抛错。
+- **Phase 3 Candidate Persistence（已决定）**：按设计不持久化 CandidateSet；未来如需 handle/cache 应先测量真实多步延迟。
+
 - **画像作用域**：基线 Impression 只有 profileVersion，没有 profileId。第一版保留原字段，未来多画像/多 library 支持需要明确 scoped store 或加入 profileId；当前不能把不同画像的同版本曝光混合解释。 **Phase 2 已解决**：每个 library 一个画像，统一 library:<libraryID>；Impression 增加必需 profileId。
 - **身份映射**：本轮保持 `itemId`、`paperId`、`candidateId` 为不透明字符串，不假定 Zotero 数字 ID 或 key 的映射。具体 libraryID/key、外部 DOI/arXiv/OpenAlex 规范化由未来适配器统一定义。 **Phase 2 MVP 已解决**：adapter 统一本地 library:<libraryID>:item:<itemID>。领域字段仍是不透明字符串；跨设备 Zotero key 和外部文献规范化继续待定。
 - **跨 Store 一致性**：本轮只验证对象结构和单 Store 写入规则；不验证反馈是否存在对应曝光/候选、matchedTopicIds 是否存在于对应画像、signalSummary 是否和原始信号吻合。后续 Service/事务需定义这些规则。 **Phase 2 更新**：仅 ProfileStore 生产化；Service 从真实输入推导 signalSummary 并 CAS 保存。反馈/曝光关联事务和跨 Store 一致性仍留待 Phase 5。
@@ -320,6 +472,13 @@ git diff --check
 - Phase 2 验收限制，优先级中：尚未在真实 Zotero.DB 宿主、插件重启和 group library UI 中 smoke test；Node SQLite seam 不能替代该验证。
 
 ## Handoff Notes
+
+### Phase 3 当前交接（2026-09-09）
+
+- 主服务 `src/recommendation/candidate/candidateService.ts`；Agent adapter 与 Tool 位于各自 integration 层。独立可测；上限集中 config.ts。
+- 用户已授权本阶段提交和远端上传；阶段提交/标签为 `feat(recommendation): add personalized candidate discovery` / `phase-3`，目标为个人仓库 origin。代码、测试、阶段需求、架构和日志一并交付；独立用户分析材料保持原样且不纳入提交。
+- 重点复现 candidate 系列 35 项新增测试；日志在 `/tmp/phase3-{focused,unit,build,test-types,lint}.log`，临时文件丢失时以本记录为准。
+- Phase 2 宿主 smoke 仍未执行，不把自动化 SQLite seam 当作 Zotero.DB 验收。
 
 ### Phase 2 当前交接（2026-09-07）
 

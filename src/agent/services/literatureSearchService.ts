@@ -12,7 +12,7 @@ type SearchMode =
 
 type SearchSource = "openalex" | "arxiv" | "europepmc";
 
-type SearchInput = {
+export type SearchInput = {
   itemId?: number;
   paperContext?: PaperContextRef;
   doi?: string;
@@ -26,7 +26,7 @@ type SearchInput = {
   libraryID?: number;
 };
 
-type OnlinePaperResult = {
+export type OnlinePaperResult = {
   title: string;
   authors: string[];
   year?: number;
@@ -50,7 +50,7 @@ type ExternalMetadataResult = {
   displaySubtitle?: string;
 };
 
-type LiteratureSearchResult =
+export type LiteratureSearchResult =
   | {
       results: OnlinePaperResult[];
       total?: number;
@@ -126,10 +126,12 @@ function stripHtmlTags(value: string): string {
 async function fetchJson(
   url: string,
   headers?: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const response = await (
     globalThis as typeof globalThis & { fetch?: FetchLike }
   ).fetch!(url, {
+    ...(signal ? { signal } : {}),
     headers: {
       Accept: "application/json",
       "User-Agent": USER_AGENT,
@@ -182,9 +184,17 @@ async function zoteroFetchJson(url: string): Promise<unknown> {
   }
 }
 
-async function oaFetch(url: string): Promise<unknown> {
+async function oaFetch(url: string, signal?: AbortSignal): Promise<unknown> {
   const separator = url.includes("?") ? "&" : "?";
-  return fetchJson(`${url}${separator}${OA_MAILTO}`);
+  return fetchJson(`${url}${separator}${OA_MAILTO}`, undefined, signal);
+}
+
+function checkCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error("Literature search cancelled");
+    error.name = "AbortError";
+    throw error;
+  }
 }
 
 function reconstructAbstract(invertedIndex: unknown): string {
@@ -271,14 +281,17 @@ function extractOpenAlexId(url: string): string | null {
 
 async function resolveOpenAlexWork(
   doi: string,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown> | null> {
   try {
     const encodedDoi = encodeURIComponent(`https://doi.org/${doi}`);
     const raw = (await oaFetch(
       `${OA_BASE}/works/${encodedDoi}?select=${OA_SELECT},related_works,referenced_works`,
+      signal,
     )) as Record<string, unknown>;
     return raw ?? null;
   } catch (err) {
+    checkCancelled(signal);
     ztoolkit.log("LLM: OpenAlex DOI fetch failed", err);
     return null;
   }
@@ -287,6 +300,7 @@ async function resolveOpenAlexWork(
 async function batchFetchWorks(
   ids: string[],
   limit: number,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   const slice = ids.slice(0, limit);
   if (!slice.length) {
@@ -295,6 +309,7 @@ async function batchFetchWorks(
   const filter = `openalex:${slice.join("|")}`;
   const raw = (await oaFetch(
     `${OA_BASE}/works?filter=${encodeURIComponent(filter)}&select=${OA_SELECT}&per-page=${slice.length}`,
+    signal,
   )) as { results?: unknown[] };
   return (raw.results ?? [])
     .map(normalizeOpenAlexWork)
@@ -304,6 +319,7 @@ async function batchFetchWorks(
 async function fetchRelated(
   work: Record<string, unknown>,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   const relatedUrls = Array.isArray(work.related_works)
     ? (work.related_works as string[])
@@ -311,12 +327,13 @@ async function fetchRelated(
   const ids = relatedUrls
     .map(extractOpenAlexId)
     .filter((id): id is string => Boolean(id));
-  return batchFetchWorks(ids, limit);
+  return batchFetchWorks(ids, limit, signal);
 }
 
 async function fetchReferences(
   work: Record<string, unknown>,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   const referenceUrls = Array.isArray(work.referenced_works)
     ? (work.referenced_works as string[])
@@ -324,15 +341,17 @@ async function fetchReferences(
   const ids = referenceUrls
     .map(extractOpenAlexId)
     .filter((id): id is string => Boolean(id));
-  return batchFetchWorks(ids, limit);
+  return batchFetchWorks(ids, limit, signal);
 }
 
 async function fetchCitations(
   openAlexId: string,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   const raw = (await oaFetch(
     `${OA_BASE}/works?filter=cites:${encodeURIComponent(openAlexId)}&sort=cited_by_count:desc&select=${OA_SELECT}&per-page=${limit}`,
+    signal,
   )) as { results?: unknown[] };
   return (raw.results ?? [])
     .map(normalizeOpenAlexWork)
@@ -343,12 +362,13 @@ async function fetchKeywordSearch(
   query: string,
   limit: number,
   author?: string,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   let url = `${OA_BASE}/works?search=${encodeURIComponent(query)}&select=${OA_SELECT}&per-page=${limit}`;
   if (author) {
     url += `&filter=raw_author_name.search:${encodeURIComponent(author)}`;
   }
-  const raw = (await oaFetch(url)) as { results?: unknown[] };
+  const raw = (await oaFetch(url, signal)) as { results?: unknown[] };
   return (raw.results ?? [])
     .map(normalizeOpenAlexWork)
     .filter((paper): paper is OnlinePaperResult => Boolean(paper));
@@ -357,9 +377,11 @@ async function fetchKeywordSearch(
 async function fetchAuthorSearch(
   author: string,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<OnlinePaperResult[]> {
   const raw = (await oaFetch(
     `${OA_BASE}/works?filter=raw_author_name.search:${encodeURIComponent(author)}&sort=cited_by_count:desc&select=${OA_SELECT}&per-page=${limit}`,
+    signal,
   )) as { results?: unknown[] };
   return (raw.results ?? [])
     .map(normalizeOpenAlexWork)
@@ -863,10 +885,13 @@ export class LiteratureSearchService {
     input: SearchInput,
     context: AgentToolContext,
   ): Promise<LiteratureSearchResult> {
+    checkCancelled(context.signal);
     if (input.mode === "metadata") {
       return this.lookupMetadata(this.resolveLookupSeed(input, context));
     }
-    return this.search(input, context);
+    const result = await this.search(input, context);
+    checkCancelled(context.signal);
+    return result;
   }
 
   /**
@@ -1012,6 +1037,7 @@ export class LiteratureSearchService {
     input: SearchInput,
     context: AgentToolContext,
   ): Promise<LiteratureSearchResult> {
+    const signal = context.signal;
     const mode = input.mode === "metadata" ? "search" : input.mode;
     const source = input.source ?? "openalex";
     const limit = input.limit ?? 10;
@@ -1118,9 +1144,11 @@ export class LiteratureSearchService {
       try {
         let results: OnlinePaperResult[];
         if (query) {
-          results = dedupe(await fetchKeywordSearch(query, limit, author));
+          results = dedupe(
+            await fetchKeywordSearch(query, limit, author, signal),
+          );
         } else {
-          results = dedupe(await fetchAuthorSearch(author!, limit));
+          results = dedupe(await fetchAuthorSearch(author!, limit, signal));
         }
         return {
           results,
@@ -1129,6 +1157,7 @@ export class LiteratureSearchService {
           query: query || `author:${author}`,
         };
       } catch (error) {
+        checkCancelled(signal);
         return {
           results: [],
           source: "OpenAlex",
@@ -1140,7 +1169,9 @@ export class LiteratureSearchService {
 
     if (!doi) {
       if (titleFallback) {
-        const results = dedupe(await fetchKeywordSearch(titleFallback, limit));
+        const results = dedupe(
+          await fetchKeywordSearch(titleFallback, limit, undefined, signal),
+        );
         return {
           results,
           total: results.length,
@@ -1156,10 +1187,12 @@ export class LiteratureSearchService {
       );
     }
 
-    const work = await resolveOpenAlexWork(doi);
+    const work = await resolveOpenAlexWork(doi, signal);
     if (!work) {
       if (titleFallback) {
-        const results = dedupe(await fetchKeywordSearch(titleFallback, limit));
+        const results = dedupe(
+          await fetchKeywordSearch(titleFallback, limit, undefined, signal),
+        );
         return {
           results,
           total: results.length,
@@ -1178,9 +1211,11 @@ export class LiteratureSearchService {
     const warnings: string[] = [];
 
     if (mode === "recommendations") {
-      results = dedupe(await fetchRelated(work, limit));
+      results = dedupe(await fetchRelated(work, limit, signal));
       if (results.length === 0 && titleFallback) {
-        results = dedupe(await fetchKeywordSearch(titleFallback, limit));
+        results = dedupe(
+          await fetchKeywordSearch(titleFallback, limit, undefined, signal),
+        );
         warnings.push(
           "OpenAlex had no related works yet; returned keyword search results instead.",
         );
@@ -1195,12 +1230,12 @@ export class LiteratureSearchService {
         };
       }
     } else if (mode === "references") {
-      results = dedupe(await fetchReferences(work, limit));
+      results = dedupe(await fetchReferences(work, limit, signal));
     } else {
       if (!openAlexId) {
         throw new Error("Could not determine OpenAlex ID to query citations.");
       }
-      results = dedupe(await fetchCitations(openAlexId, limit));
+      results = dedupe(await fetchCitations(openAlexId, limit, signal));
     }
 
     return {
