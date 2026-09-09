@@ -55,7 +55,7 @@
 - Branch：main；starting commit：`5fa52194677fff1054b5da874e55bb99a62742a7`，远端 main 已通过 `git ls-remote` 核对一致；phase-4 实现提交 `743e0b813fa4aad8bb730f4fa35ab215c3388211` 保持不动。
 - 阶段实现提交标题：`feat(recommendation): add feedback learning loop`；annotated tag：phase-5。提交内以标签引用自身提交，不写循环自引用哈希。
 - 起始 tracked tree 干净，仅有未跟踪阶段需求、doc/analysis/ 与独立中文分析报告。仅阶段需求纳入交付，分析材料保持原样。
-- 远端交付状态在阶段验证完成后核对，禁止 force push、移动旧标签或推送 upstream。
+- 阶段实现提交：`ca8ee763f217ab81348040002e34c1a39b7f3d10`。已成功推送 origin/main 与 annotated phase-5，远端引用核对与该实现一致。随后追加本条交付日志提交到 main，phase-5 保持指向实现提交；不 force push、不移动旧标签、不推送 upstream。
 
 #### Files Changed
 
