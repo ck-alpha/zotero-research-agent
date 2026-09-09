@@ -1,3 +1,4 @@
+import type { ProfileFeedbackSource } from "../feedback/replay";
 import type { ExplicitPreferences, ResearchProfile } from "../domain/profile";
 import type { ProfileStore } from "../domain/stores";
 import type {
@@ -32,6 +33,7 @@ export class ProfileService {
     private readonly builder = new ProfileBuilder(),
     private readonly now: () => number = Date.now,
     private readonly extractionTimeoutMs: number = TOPIC_EXTRACTION_LIMITS.totalTimeoutMs,
+    private readonly feedback?: ProfileFeedbackSource,
   ) {
     if (!Number.isFinite(extractionTimeoutMs) || extractionTimeoutMs <= 0)
       throw new TypeError("Invalid extraction timeout");
@@ -150,16 +152,24 @@ export class ProfileService {
     this.checkCancelled(options.signal);
     const extraction = await this.extract(snapshot.papers, options);
     this.checkCancelled(options.signal);
+    const now = this.now();
+    const feedback = await this.feedback?.loadForProfile(
+      profileIdForLibrary(libraryID),
+      now,
+    );
+    this.checkCancelled(options.signal);
     const profile = this.builder.build({
       libraryID,
       papers: snapshot.papers,
       previous,
       explicitPreferences,
       extractedTopics: extraction.topics,
-      now: this.now(),
+      now,
+      feedback,
     });
     const warnings = [...extraction.warnings];
     if (
+      !this.feedback &&
       previous &&
       (previous.signalSummary.positiveFeedbackCount ||
         previous.signalSummary.negativeFeedbackCount ||

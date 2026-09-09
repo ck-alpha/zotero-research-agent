@@ -1,3 +1,10 @@
+import { createRecommendationFeedbackTool } from "./recommendation/recommendationFeedback";
+import { RecommendationFeedbackService } from "../../recommendation/feedback/service";
+import {
+  SqliteFeedbackStore,
+  SqliteImpressionStore,
+} from "../../recommendation/feedback/stores";
+import { SqliteProfileStore } from "../../recommendation/profile/profileStore";
 import { createResearchRecommendTool } from "./recommendation/researchRecommend";
 import { AgentToolRegistry } from "./registry";
 import { createResearchProfileGetTool } from "./recommendation/researchProfileGet";
@@ -674,6 +681,15 @@ export function createBuiltInToolRegistry(
   registry.register(markToolTier(runCommand, "advanced"));
   registry.register(markToolTier(zoteroScript, "advanced"));
   registry.register(createToolResultReadTool());
+  registry.register(
+    createRecommendationFeedbackTool(
+      new RecommendationFeedbackService(
+        new SqliteProfileStore(),
+        new SqliteImpressionStore(),
+        new SqliteFeedbackStore(),
+      ),
+    ),
+  );
   registry.register(
     createResearchProfileGetTool(createProductionProfileService()),
   );

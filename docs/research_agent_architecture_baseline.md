@@ -1015,7 +1015,7 @@ callEmbeddings 兼容增加可选 AbortSignal，传到既有 fetch；带索引�
 
 配置集中在 ranking/config.ts，可由测试覆盖且校验。工程默认值尚未通过离线推荐评测校准。
 本阶段不持久化 profile/candidate embedding、CandidateSet、RankingResult 或推荐曝光；
-不生产化 ImpressionStore/FeedbackStore，不实现反馈学习、LLM reranking 或推荐 PDF/RAG enrichment。
+Phase 4 当时不生产化 ImpressionStore/FeedbackStore；Phase 5 已接入曝光/反馈闭环。LLM reranking 与推荐 PDF/RAG enrichment 仍未实现。
 
 ---
 
@@ -1147,22 +1147,28 @@ RankingService，使用完整内部候选池；不经 candidate Tool 摘要，�
 
 默认 Top-K=10、最多 20，少于 K 时返回全部；abstract snippet 最多 500 字符。
 返回 profileId/version、generatedAt/focus、rank、matchedTopics、metadata/provenance、分数和双阶段 diagnostics/warnings；
-不返回完整画像、原始向量或虚构持久 recommendationId。个性化请求直接优先此 Tool，
+不返回完整画像或原始向量；Phase 5 增加真实持久 recommendationId。个性化请求直接优先此 Tool，
 candidate Tool 用于发现池检查，通用学术检索继续使用 literature_search。
 普通聊天、Codex App Server、Claude Code、WebChat/web_sync 和 MCP/public catalog 均未接入。
 
 ---
 
-## Phase 5 — Feedback Loop
+## Phase 5 — Feedback Loop（已实现）
 
-实现：
+`research_recommend → SqliteImpressionStore → recommendationId → recommendation_feedback → SqliteFeedbackStore → FeedbackReplay → Profile CAS`。
 
-- feedback event；
-- feedback store；
-- profile updater；
-- profile version transition；
-- recommendation impression；
-- `recommendation_feedback`。
+- 两个生产 Store 使用既有 Zotero.DB / SQLite seam；独立 `IMPRESSION_SCHEMA_VERSION=1`、`FEEDBACK_SCHEMA_VERSION=1`。曝光 create-only，反馈 append-only；写前校验并在首次 await 前脱离输入，读后校验 schema、JSON 和行元数据，无内存成功回退。
+- 推荐成功输出前生成 `crypto.randomUUID()`，曝光 timestamp 使用 ranking.generatedAt；仅持久化返回的 Top-K，保存完整评分、provenance 和 impression-level `topicSnapshot`（ID + label），与 matchedTopicIds 校验一致。落库失败导致 Tool 失败。
+- 逻辑事件身份为长度编码的 `(recommendationId, candidateId, action)`；相同动作重试返回 already_recorded，不增计数。不同动作保留独立事件。Feedback domain 不增加 profileId；行冗余 profile_id，经 Service 校验后写入并建立索引用于按画像重放。
+- Service 校验曝光存在、library scope、候选唯一成员、事件关系和时间戳；允许历史 profileVersion，不依赖历史画像。学习只取曝光中 matchedTopicIds 对应的持久标签，不学习临时 focus 或聊天文本。
+- 确定性强度：positive +0.70、save +1.00、negative -1.00、skip -0.20；180 天半衰期。正负质量分别求和后使用 `1-exp(-mass/2)` 饱和。positive/save 计正事件，negative/skip 计负事件。
+- 先持久化事件，再重放并 CAS 更新画像；最多两次 CAS 尝试，失败保留事件并报告 feedback_profile_reconcile_required。`reconcileProfileFeedback` 提供重启/冲突恢复；相同状态不增版本，已应用事件的重试不因时间衰减产生额外版本。
+- 可选 `ResearchProfile.feedbackBaseTopics` 保存不含反馈的主题基准，避免累计已反馈分数；schema v1 可读旧无此字段的画像。基准保留 library/explicit 来源与证据，禁止反馈源/反馈 refs。每次全刷新重新生成基准并合并全部持久反馈。
+- 反馈更新以基准 weight（已包含显式偏好）为起点，恢复显式负惩罚前权重，再使用 `max(baseUnpenalized, feedbackPositive) * (1-max(explicitNegative, feedbackNegative))`；confidence 为基准与两类反馈置信的最大值，均 clamp 到 [0,1]。负显式偏好强度为 1 时权重恒为 0。
+- 反馈更新仅在语义状态改变时 version +1，generatedAt 不变、updatedAt=now，失效 embedding，代表论文不变。来源/refs 可随零支持移除；feedback-only 主题必须有曝光标签。证据最多 12 条：保留至多 11 条非反馈证据，其余使用最新反馈事件，时间相同按 eventId 排序。
+- `research_profile_get({refresh:true})` 合并 library + optional extractor + explicit preferences + durable feedback；两个时间戳均为 now。反馈提交本身不调用 Utility LLM。
+- `recommendation_feedback` 仅插件 Agent，输入仅 recommendationId/candidateId/action，其他值来自上下文/服务端。分类 write；现有 Action Contract 无推荐记忆操作，故增加严格受限的 recommendation_memory 作用域，始终使用独立具体确认、保留执行锁和 effect，禁止继承批准，不产生虚构 Zotero receipts/undo journal。其他写入原安全路径不变。
+- `save` 仅强正偏好，不自动导入 Zotero。推荐 Evidence/RAG、UI、Scheduler/Digest、向量持久化均未实现。真实宿主 smoke 仍 not executed，Node SQLite seam 不替代宿主验收。
 
 ---
 

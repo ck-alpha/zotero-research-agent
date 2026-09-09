@@ -1,3 +1,5 @@
+import type { ImpressionStore } from "../../../recommendation/domain/stores";
+import { SqliteImpressionStore } from "../../../recommendation/feedback/stores";
 import type { AgentToolContext, AgentToolDefinition } from "../../types";
 import type { ProfileService } from "../../../recommendation/profile/profileService";
 import type { ResearchLibrarySource } from "../../../recommendation/profile/contracts";
@@ -21,6 +23,7 @@ export function createResearchRecommendTool(
   options: {
     embeddingFactory?: () => RankingEmbeddingProvider | undefined;
     now?: () => number;
+    impressionStore?: ImpressionStore;
   } = {},
 ): AgentToolDefinition<RecommendInput, unknown> {
   return {
@@ -60,7 +63,7 @@ export function createResearchRecommendTool(
           request.userText || "",
         ),
       instruction:
-        "For personalized requests based on my library/interests or papers I should read next, call research_recommend directly. It loads the profile and discovers candidates internally; calling research_candidate_discover first repeats discovery. Preserve returned rank order and explain matched topics, scores and provenance. Use research_candidate_discover for candidate inspection/debugging, research_profile_get({refresh:true}) only for explicit profile refresh, and literature_search for generic scholarly searches.",
+        "For personalized requests based on my library/interests or papers I should read next, call research_recommend directly. It loads the profile and discovers candidates internally; calling research_candidate_discover first repeats discovery. Retain recommendationId and candidateId for subsequent recommendation_feedback calls. Preserve returned rank order and explain matched topics, scores and provenance. Use research_candidate_discover for candidate inspection/debugging, research_profile_get({refresh:true}) only for explicit profile refresh, and literature_search for generic scholarly searches.",
     },
     isAvailable: (request) =>
       !["codex_app_server", "webchat"].includes(request.authMode || "") &&
@@ -161,7 +164,20 @@ export function createResearchRecommendTool(
           provenance: paper.provenance,
         };
       });
+      const recommendationId = globalThis.crypto.randomUUID();
+      checkCancelled(context.signal);
+      await (options.impressionStore ?? new SqliteImpressionStore()).save({
+        recommendationId,
+        profileId: ranked.profileId,
+        profileVersion: ranked.profileVersion,
+        timestamp: ranked.generatedAt,
+        topicSnapshot: [
+          ...new Set(ranked.recommendations.flatMap((p) => p.matchedTopicIds)),
+        ].map((id) => ({ id, label: topics.get(id)! })),
+        candidates: ranked.recommendations,
+      });
       return {
+        recommendationId,
         profileId: ranked.profileId,
         profileVersion: ranked.profileVersion,
         generatedAt: ranked.generatedAt,

@@ -14,5 +14,7 @@ export interface RecommendationImpression {
   profileId: string;
   timestamp: number;
   profileVersion: number;
+  /** Durable labels for matched IDs; legacy domain snapshots may omit it. */
+  topicSnapshot?: { id: string; label: string }[];
   candidates: RecommendedPaper[];
 }

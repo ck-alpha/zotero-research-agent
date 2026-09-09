@@ -295,8 +295,26 @@ export class AgentToolRegistry {
     }
 
     const callerKind = options.callerKind || "model";
+    const recommendationMemory =
+      tool.spec.mutationScope === "recommendation_memory";
+    if (
+      recommendationMemory &&
+      (tool.spec.name !== "recommendation_feedback" ||
+        tool.spec.mutability !== "write" ||
+        !tool.spec.localAgentOnly ||
+        !tool.spec.requiresConfirmation ||
+        !tool.createPendingAction)
+    )
+      return createSyntheticErrorResult(
+        call,
+        "Invalid recommendation memory write contract",
+      );
+    // Zotero/file Action Contracts cannot express internal preference events.
+    // This narrow path always requires its own concrete user confirmation;
+    // persistence is owned by FeedbackStore, not Zotero's undo journal.
     const enforceActionContract =
-      callerKind === "model" || Boolean(context.journalActionScope);
+      !recommendationMemory &&
+      (callerKind === "model" || Boolean(context.journalActionScope));
 
     const preparedAction =
       enforceActionContract && this.actionContracts
@@ -353,6 +371,9 @@ export class AgentToolRegistry {
       },
       prepared: PreparedActionExecution | undefined = preparedAction,
     ) => {
+      // Internal events report their durable eventId/effect in Tool output;
+      // never fabricate a Zotero read/write receipt or satisfy a library obligation.
+      if (recommendationMemory) return [];
       const receipts =
         prepared && this.actionContracts
           ? this.actionContracts.finalize(
@@ -401,13 +422,14 @@ export class AgentToolRegistry {
         if (options.isExecutionAllowed && !options.isExecutionAllowed()) {
           return lifecycleError();
         }
-        const executionPrepared = this.actionContracts
-          ? await this.actionContracts.prepare(
-              tool,
-              resolvedInput,
-              executionContext,
-            )
-          : preparedAction;
+        const executionPrepared =
+          !recommendationMemory && this.actionContracts
+            ? await this.actionContracts.prepare(
+                tool,
+                resolvedInput,
+                executionContext,
+              )
+            : preparedAction;
         if (executionPrepared && context.request.actionContract) {
           const scopeFailure = await this.actionContracts!.validateScope(
             context.request.actionContract,
@@ -607,7 +629,9 @@ export class AgentToolRegistry {
     }
     const writeMode = getAgentLibraryWriteMode();
     const journalUnavailable =
-      mutationPlan.effect === "write" && !isAgentChangeJournalAvailable();
+      !recommendationMemory &&
+      mutationPlan.effect === "write" &&
+      !isAgentChangeJournalAvailable();
     if (journalUnavailable && writeMode === "yolo") {
       return createSyntheticErrorResult(
         call,
@@ -620,14 +644,16 @@ export class AgentToolRegistry {
         (writeMode === "safe" ||
           (writeMode === "auto" &&
             (mutationPlan.reversibility !== "full" || journalUnavailable))));
-    const shouldRequireConfirmation =
-      options.forceConfirmation && tool.createPendingAction
+    const shouldRequireConfirmation = recommendationMemory
+      ? true
+      : options.forceConfirmation && tool.createPendingAction
         ? true
         : mutationPlan.effect === "write"
           ? planRequiresConfirmation
           : toolWantsConfirmation;
     const acceptsInheritedApproval =
       shouldRequireConfirmation &&
+      !recommendationMemory &&
       !journalUnavailable &&
       options.inheritedApproval &&
       Boolean(

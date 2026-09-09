@@ -101,20 +101,20 @@ const explicitPreferences = object({
   positiveTopics: array(preference),
   negativeTopics: array(preference),
 });
+const topicInterest = object({
+  id: assertNonEmptyId,
+  label: assertNonEmptyId,
+  weight: unitInterval,
+  confidence: unitInterval,
+  sources: array(oneOf("library", "explicit", "feedback"), 1),
+  lastEvidenceAt: timestamp,
+  evidenceRefs: ids,
+});
 const profile = object({
   profileId: assertNonEmptyId,
   version,
-  topics: array(
-    object({
-      id: assertNonEmptyId,
-      label: assertNonEmptyId,
-      weight: unitInterval,
-      confidence: unitInterval,
-      sources: array(oneOf("library", "explicit", "feedback"), 1),
-      lastEvidenceAt: timestamp,
-      evidenceRefs: ids,
-    }),
-  ),
+  topics: array(topicInterest),
+  feedbackBaseTopics: optional(array(topicInterest)),
   representativePapers: array(
     object({
       itemId: assertNonEmptyId,
@@ -237,6 +237,9 @@ const impression = object({
   profileId: assertNonEmptyId,
   timestamp,
   profileVersion: version,
+  topicSnapshot: optional(
+    array(object({ id: assertNonEmptyId, label: assertNonEmptyId })),
+  ),
   candidates: array(
     object({
       ...candidateShape,
@@ -257,6 +260,21 @@ export function assertResearchProfile(
   value: unknown,
 ): asserts value is ResearchProfile {
   profile(value, "profile");
+  const p = value as ResearchProfile;
+  if (
+    p.feedbackBaseTopics?.some(
+      (t) =>
+        t.sources.includes("feedback") ||
+        t.evidenceRefs.some((r) => r.startsWith("feedback:")),
+    )
+  )
+    invalid("profile.feedbackBaseTopics", "non-feedback baseline");
+  if (
+    p.feedbackBaseTopics &&
+    new Set(p.feedbackBaseTopics.map((t) => t.id)).size !==
+      p.feedbackBaseTopics.length
+  )
+    invalid("profile.feedbackBaseTopics", "unique topic IDs");
 }
 
 export function assertRecommendationCandidate(
@@ -285,7 +303,22 @@ export function assertRecommendationImpression(
   value: unknown,
 ): asserts value is RecommendationImpression {
   impression(value, "impression");
-  const { candidates } = value as RecommendationImpression;
+  const { candidates, topicSnapshot } = value as RecommendationImpression;
+  if (topicSnapshot) {
+    const ids = new Set(topicSnapshot.map((t) => t.id));
+    if (
+      ids.size !== topicSnapshot.length ||
+      candidates.some(
+        (p) =>
+          new Set(p.matchedTopicIds).size !== p.matchedTopicIds.length ||
+          p.matchedTopicIds.some((id) => !ids.has(id)),
+      )
+    )
+      invalid(
+        "impression.topicSnapshot",
+        "unique labels covering all matched IDs",
+      );
+  }
   candidates.forEach((paper, index) =>
     assertCandidateProvenanceConsistency(
       paper,

@@ -61,6 +61,8 @@ export interface ResearchProfile {
   /** Positive safe integer snapshot revision, not a schema version. */
   version: number;
   topics: TopicInterest[];
+  /** Durable non-feedback baseline prevents compounding during full replay. */
+  feedbackBaseTopics?: TopicInterest[];
   representativePapers: RepresentativePaper[];
   explicitPreferences: ExplicitPreferences;
   embedding?: ProfileEmbeddingRef;

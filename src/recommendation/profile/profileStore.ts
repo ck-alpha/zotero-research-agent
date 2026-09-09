@@ -25,7 +25,7 @@ export class ProfileVersionConflict extends Error {
   }
 }
 
-function productionDb(): ProfileDatabase {
+export function productionDb(): ProfileDatabase {
   const db = (globalThis as unknown as { Zotero?: { DB?: ProfileDatabase } })
     .Zotero?.DB;
   if (!db?.queryAsync || !db.executeTransaction)

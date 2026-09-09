@@ -1,3 +1,5 @@
+import { applyProfileFeedback } from "../feedback/profileUpdater";
+import type { FeedbackProfileState } from "../feedback/replay";
 import type {
   ExplicitPreferences,
   ResearchProfile,
@@ -43,6 +45,7 @@ export type ProfileBuildInput = {
   explicitPreferences?: ExplicitPreferences;
   extractedTopics?: readonly ExtractedTopic[];
   now: number;
+  feedback?: FeedbackProfileState;
 };
 
 /** Pure synchronous build: all I/O and optional model failure handling belong to the service. */
@@ -251,6 +254,8 @@ export class ProfileBuilder {
       updatedAt: now,
     };
     assertResearchProfile(profile);
-    return profile;
+    return input.feedback
+      ? applyProfileFeedback(profile, input.feedback, now, true)
+      : profile;
   }
 }

@@ -291,6 +291,8 @@ export type ToolSpec = {
   description: string;
   inputSchema: object;
   mutability: "read" | "write";
+  /** Internal recommendation events have their own durable log and mandatory confirmation. */
+  mutationScope?: "recommendation_memory";
   requiresConfirmation: boolean;
   /**
    * Model-visible tools are advertised to agent/model runtimes and MCP

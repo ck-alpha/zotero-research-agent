@@ -1,3 +1,4 @@
+import { SqliteImpressionStore } from "../src/recommendation/feedback/stores";
 import { assert } from "chai";
 import { rejects } from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -247,6 +248,7 @@ describe("research_recommend tool and no-network SQLite integration", function (
           () => discovery,
           {
             now: () => PROFILE_NOW,
+            impressionStore: new SqliteImpressionStore(() => db),
             embeddingFactory: () =>
               semantic
                 ? {
@@ -266,6 +268,7 @@ describe("research_recommend tool and no-network SQLite integration", function (
           },
         );
         const result = (await tool.execute({ topK: 20 }, ctx)) as {
+          recommendationId: string;
           profileId: string;
           profileVersion: number;
           generatedAt: number;
@@ -322,7 +325,18 @@ describe("research_recommend tool and no-network SQLite integration", function (
         assert.isBelow(negative.scores.baseScore!, first.scores.baseScore!);
         assert.equal(result.rankingDiagnostics.semanticSucceeded, semantic);
         assert.include(result.warnings, "ranking_tool_output_truncated");
-        assert.notProperty(result, "recommendationId");
+        assert.isString(result.recommendationId);
+        const impression = await new SqliteImpressionStore(() => db).load(
+          result.recommendationId,
+        );
+        assert.deepEqual(
+          impression!.candidates.map((p) => p.candidateId),
+          result.recommendations.map((p) => p.candidateId),
+        );
+        assert.deepEqual(
+          impression!.candidates.map((p) => p.provenance),
+          result.recommendations.map((p) => p.provenance),
+        );
         assert.notProperty(result, "profile");
         assert.notProperty(result, "vectors");
         for (const p of result.recommendations)
@@ -360,7 +374,7 @@ describe("research_recommend tool and no-network SQLite integration", function (
     assert.include(text, "discovery.candidates");
     assert.notMatch(
       text,
-      /\b(?:ImpressionStore|FeedbackStore|paper_read|MinerU|ZoteroPane|getTool|createResearchCandidateDiscoverTool)\b/u,
+      /\b(?:FeedbackStore|paper_read|MinerU|ZoteroPane|getTool|createResearchCandidateDiscoverTool)\b/u,
     );
   });
 });

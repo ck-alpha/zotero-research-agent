@@ -5,12 +5,12 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-4`，对应 Personalized Ranking + MMR 实现提交；历史 `phase-1` / `phase-2` / `phase-3` 保留；本轮按用户授权向个人 `origin/main` 和 `origin/phase-4` 交付。
-- Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Current HEAD 在实现提交后追加远端交付日志提交；不移动既有阶段标签。
-- Current phase: Phase 4 — Personalized Ranking + MMR（本地实现与自动化验收，真实宿主/live smoke 未执行）。
+- Phase checkpoint: `phase-5`；历史 `phase-1` / `phase-2` / `phase-3` / `phase-4` 保留。阶段实现提交通过 `git rev-parse phase-5^{commit}` 查询，交付目标仅个人 origin/main 与 phase-5。
+- Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Phase 5 起点为其后远端交付日志提交 5fa52194；不移动既有阶段标签。
+- Current phase: Phase 5 — Impression + Feedback + Profile Learning Loop（真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
 - Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
-- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase4_personalized_ranking_mmr_prompt.md](../doc/codex_phase4_personalized_ranking_mmr_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
+- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase5_feedback_learning_loop_prompt.md](../doc/codex_phase5_feedback_learning_loop_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
 
 ## Current Architecture Status
 
@@ -29,19 +29,158 @@
 - Lexical Ranking / Optional Semantic Ranking / Graph-Seed Feature / Recency Feature / Explicit Preference Compatibility / Base Ranker / MMR / `research_recommend`：已实现。
 - Phase 4 链路：完整 Candidate Pool → Feature Computation → 可用权重归一化 Base Score → Base Sort → MMR → RecommendedPaper[] → 插件 Agent。
 - Profile Memory / Candidate Query Recall / Seed Recall / Merge-Dedup / Novelty Filter：已实现并保持既有边界。
-- Feedback Learning / Production ImpressionStore / Production FeedbackStore / Recommendation Evidence-RAG：**NOT implemented**。
-- 无向量/CandidateSet/推荐结果持久化；推荐 UI / Scheduler / Skill / Action、跨设备同步尚未实现。
+- Production ImpressionStore / Production FeedbackStore / RecommendationImpression persistence / Feedback append-only events / Feedback replay / Feedback-aware Profile update / recommendation_feedback：**implemented**。
+- Recommendation Evidence/RAG / recommendation UI / Scheduler-Digest / automatic Zotero import from feedback：**NOT implemented**。
+- 曝光和反馈已持久化；无向量/CandidateSet 持久化，推荐 UI / Scheduler / Skill / Action、跨设备同步尚未实现。
 
-| 后端                                                    | Phase 4 支持状态                                                                                      |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get`、`research_candidate_discover`、`research_recommend`；无 embedding 可排序 |
-| 普通聊天                                                | 未接入                                                                                                |
-| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝                                                      |
-| Claude Code                                             | 未接入；Tool 不在外部目录                                                                             |
-| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                                                                      |
-| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                    |
+| 后端                                                    | 当前支持状态                                                                                                                     |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get`、`research_candidate_discover`、`research_recommend`、`recommendation_feedback`；无 embedding 可排序 |
+| 普通聊天                                                | 未接入                                                                                                                           |
+| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝                                                                                 |
+| Claude Code                                             | 未接入；Tool 不在外部目录                                                                                                        |
+| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                                                                                                 |
+| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                                               |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase5-feedback-learning-loop
+
+#### Goal
+
+完成实际展示曝光 → 结构化反馈 → 持久事件 → 确定性重放 → 画像 CAS → 后续推荐变化的闭环，并保留显式刷新中的反馈。没有开展下一阶段。
+
+#### Git Baseline
+
+- Branch：main；starting commit：`5fa52194677fff1054b5da874e55bb99a62742a7`，远端 main 已通过 `git ls-remote` 核对一致；phase-4 实现提交 `743e0b813fa4aad8bb730f4fa35ab215c3388211` 保持不动。
+- 阶段实现提交标题：`feat(recommendation): add feedback learning loop`；annotated tag：phase-5。提交内以标签引用自身提交，不写循环自引用哈希。
+- 起始 tracked tree 干净，仅有未跟踪阶段需求、doc/analysis/ 与独立中文分析报告。仅阶段需求纳入交付，分析材料保持原样。
+- 远端交付状态在阶段验证完成后核对，禁止 force push、移动旧标签或推送 upstream。
+
+#### Files Changed
+
+| 文件                                                     | 用途                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------- |
+| src/recommendation/feedback/stores.ts                    | 曝光/反馈生产 SQLite Store、schema 常量和按 scope 查询              |
+| src/recommendation/feedback/policy.ts                    | 固定动作强度、半衰期、饱和公式、逻辑事件 ID                         |
+| src/recommendation/feedback/replay.ts                    | 跨对象关系校验、确定性重放、持久标签、计数和证据                    |
+| src/recommendation/feedback/profileUpdater.ts            | 纯反馈更新器、不重复叠加的基准、来源与时间/版本                     |
+| src/recommendation/feedback/service.ts                   | 事件优先提交、幂等、两次 CAS 上限、reconciliation                   |
+| src/recommendation/domain/profile.ts                     | 可选 feedbackBaseTopics 纯主题基准合同                              |
+| src/recommendation/domain/recommendation.ts              | 曝光 topicSnapshot 标签合同                                         |
+| src/recommendation/domain/validation.ts                  | 新合同校验、主题 ID/标签覆盖、基准限制                              |
+| src/recommendation/profile/profileStore.ts               | 导出既有 Zotero.DB seam resolver，供生产 memory stores 使用         |
+| src/recommendation/profile/profileBuilder.ts             | 纯构建输入增加 feedback aggregate，合并反馈但只生成一次版本         |
+| src/recommendation/profile/profileService.ts             | 全刷新装配 replay，生产路径不再丢弃反馈                             |
+| src/recommendation/profile/production.ts                 | 生产画像服务注入持久 FeedbackReplay                                 |
+| src/agent/tools/recommendation/researchRecommend.ts      | Top-K 曝光先持久化，输出 recommendationId                           |
+| src/agent/tools/recommendation/recommendationFeedback.ts | 约束输入、上下文 scope、强制确认、明确 effect 与状态                |
+| src/agent/tools/index.ts                                 | 注册生产 feedback Tool                                              |
+| src/agent/types.ts                                       | 最小 recommendation_memory mutationScope 合同                       |
+| src/agent/tools/registry.ts                              | 内部记忆独立确认路径，保留锁与生命周期，不伪造 Zotero receipt       |
+| test/recommendationFeedback.test.ts                      | SQLite、replay/updater、service、tool、registry 与可读完整闭环 demo |
+| test/recommendationRecommendTool.test.ts                 | 曝光断言、ID、SQLite seam 和阶段边界更新                            |
+| test/toolSurfaceRefactor.test.ts                         | 新工具目录预期                                                      |
+| docs/research_agent_architecture_baseline.md             | 更新相关 Phase 5 架构事实                                           |
+| docs/development-log.md                                  | 本轮实现、决策、验证及交接记录                                      |
+| doc/codex_phase5_feedback_learning_loop_prompt.md        | 原样保存本阶段需求                                                  |
+
+#### What Changed / Architecture Decisions
+
+##### Impression Persistence
+
+`llm_for_zotero_recommendation_impressions`：recommendation_id TEXT PRIMARY KEY NOT NULL、profile_id TEXT NOT NULL、profile_version INTEGER NOT NULL、timestamp INTEGER NOT NULL、schema_version INTEGER NOT NULL、impression_json TEXT NOT NULL。独立 IMPRESSION_SCHEMA_VERSION=1。
+
+UUID 由服务端 `crypto.randomUUID()` 生成；timestamp 为 ranking.generatedAt。只存实际返回的 Top-K，内部候选池不存；保留未裁剪元数据/完整精度 scores/provenance，Tool 仍使用既有有界摘要和四位分数显示。曝光写入失败使 Tool 失败；排序失败不写曝光。
+
+采用 impression-level topicSnapshot，避免每个候选重复存标签。domain 为兼容旧 fixture 可省略，但生产 store 必须存在；唯一标签覆盖所有 matchedTopicIds。临时 focus 不自动变成画像主题。
+
+##### Feedback Persistence / Idempotency
+
+`llm_for_zotero_recommendation_feedback`：event_id TEXT PRIMARY KEY NOT NULL、recommendation_id TEXT NOT NULL、paper_id TEXT NOT NULL、action TEXT NOT NULL、timestamp INTEGER NOT NULL、profile_id TEXT NOT NULL、schema_version INTEGER NOT NULL、feedback_json TEXT NOT NULL。独立 FEEDBACK_SCHEMA_VERSION=1。profile_id、recommendation_id、paper_id 各有查询索引；按 SQLite rowid 返回 append order。
+
+逻辑事件 ID 精确规则：`feedback:${recommendationId.length}:${recommendationId}${candidateId.length}:${candidateId}:${action}`，长度为 JS string.length。长度编码对不透明 ID 中的分隔符无歧义。同 recommendation/candidate/action 为一事件；positive→negative 是两个事件。重复 insert 不覆盖；Service 仅在实际读到匹配持久事件时解释为 already_recorded，包括并发重试。
+
+Feedback domain 没有增加 profileId；ScopedFeedbackStore 是窄扩展，profile scope 仅由 Service 校验后作为行字段持久化。两个 Store 都懒初始化、失败可重试、首次 await 前校验和脱离快照、读后校验 schema/元数据，数据库错误不伪装内存成功。
+
+##### Integrity Rules
+
+曝光必须存在且 profileId 等于上下文 library 的 profileId；候选必须恰好属于曝光一次；推荐/论文/事件身份、时间戳和 snapshot 均经验证。事件时间不得早于曝光。旧 profileVersion 有效，不要求历史画像快照。无可用持久主题标签时仅计数，报告 feedback_no_matched_topics。
+
+##### Feedback Signal Policy
+
+positive=+0.70、save=+1.00、negative=-1.00、skip=-0.20，固定工程参数；半衰期 180 天。每事件 effectiveMass=`abs(strength)*2^(-ageDays/180)`，正负分别累加；aggregate=`1-exp(-mass/2)`。positive/save 计正反馈，negative/skip 计负反馈，重试不增计数。
+
+主题只由持久 matchedTopicIds + topicSnapshot 派生；不使用标题主题提取、聊天文本或 LLM。重放按 timestamp 升序、eventId 字典序固定浮点求和顺序；历史标签冲突由该顺序最后事件的 snapshot 决定。
+
+##### Replay / Reconciliation
+
+先落事件，后 replay + profile CAS。最多两次 CAS（一次原尝试、一次 reload/replay 重试）；CAS 或更新失败不会删除有效事件，返回 feedbackRecorded=true、profileUpdated=false 和 feedback_profile_reconcile_required。
+
+`reconcileProfileFeedback(profileId, now)` 可在重启或失败后调用；同一 now、同一状态不增版本。幂等 submit 会核对重放计数与画像：若已应用全部 append-only 事件，不因点击时间改变而衰减/重建；未应用则进行 reconciliation。显式 reconciliation 可重新评估时间衰减。
+
+##### Profile Update Policy
+
+可选 feedbackBaseTopics 保存最新一次全构建的不含反馈主题（含 library/explicit 已确定分数），避免把已调整分数再次当基准。现有 Profile schema v1 保留，新读取器兼容旧无字段快照；无生产旧反馈数据迁移。若出现没有基准的历史人工 feedback 主题，明确要求 refresh，不猜测原分数。
+
+令 n 为显式负偏好，b 为已扣除 n 的基准 weight，u=b/(1-n)（n=1 时 u=0），p/q 为正/负反馈 aggregate：`weight=clamp(max(u,p)*(1-max(n,q)))`，`confidence=clamp(max(baseConfidence,p,q))`。显式强负偏好优先。save 比 positive 更强，negative 比 skip 更强。
+
+添加 feedback source，lastEvidenceAt 合并最新反馈时间。证据总数≤12，保留前≤11 条非反馈 ref，余位取最新反馈 refs（同时间按 eventId），格式 feedback:<eventId>。基准中保留完整非反馈证据，支持消失时恢复；无非反馈来源的主题移除，不留空 sources。
+
+反馈更新只在主题/计数改变时 version+1、updatedAt=now，generatedAt/显式偏好/库计数/代表论文不变；embedding 移除。刷新重建 library + optional extractor + explicit + replay，generatedAt/updatedAt 同为 now，只增一个版本。生产 refresh 不再出现 feedback_state_discarded_on_rebuild。save 不增加 representativePapers、不导入 Zotero。
+
+##### Agent Tool
+
+recommendation_feedback 仅插件 Agent，write、localAgentOnly，输入只有 recommendationId/candidateId/action；libraryID 来自 Agent context，timestamp 服务端生成，eventId/topics/strength 服务层推导。输出 compact event/status/version/topic/warnings，没有完整画像/数据库细节。
+
+运行时既有 Action Contract 只覆盖 Zotero/文件/执行，直接注册 write 会被拒绝。最终使用严格限于该 Tool 的 recommendation_memory scope：仍必须具体确认，所有 write mode 均确认，不继承其他动作批准，保留执行锁、取消/生命周期检查、明确 applied/none effect。事件 Store 是该内部状态的持久日志，不调用 Zotero mutationCoordinator，不生成 Zotero Action receipts，不满足其他 library obligation，不伪装可撤销操作。既有其他写入路径保持原检查。
+
+指导 Agent 使用上一轮推荐输出的 ID 处理“第2篇感兴趣”“第4篇不感兴趣”“这篇我想保存”“这个跳过”；上下文明确时不要求用户复述 ID。不把无关情绪当反馈，一篇一次调用。save 仅表示强正偏好。
+
+#### Tests
+
+最终实际结果（Node v24.20.0；使用工作区 .toolchains 下既有工具链）：
+
+| 命令                                                                                                                                                                             | 结果                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `npm run typecheck`                                                                                                                                                              | 通过                                                                  |
+| `node --import tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/recommendation*.test.ts' test/agentToolRegistry.test.ts test/toolSurfaceRefactor.test.ts` | 256 passing（380ms）                                                  |
+| `npm run test:unit`                                                                                                                                                              | 4423 passing / 1 pending（38s），较 Phase 4 增加 29 项通过            |
+| `npm run build`                                                                                                                                                                  | 成功打包 XPI，并通过内置 typecheck                                    |
+| `npm run check:cycles`                                                                                                                                                           | 通过，0 runtime / 0 static allowlisted                                |
+| `node node_modules/typescript/bin/tsc --noEmit -p /tmp/phase5-tsconfig.json`                                                                                                     | recommendation 系列测试额外类型检查通过                               |
+| `node node_modules/eslint/bin/eslint.js <全部变更 TS 文件>`                                                                                                                      | 通过                                                                  |
+| `node node_modules/prettier/bin/prettier.cjs --check <全部变更 TS 文件> docs/development-log.md`                                                                                 | 通过；架构文档只格式化修改的 Phase 5 节，保留其余原格式；需求原样保存 |
+| `git diff --check`                                                                                                                                                               | 通过                                                                  |
+
+临时日志为 `/tmp/phase5-{focused,unit,build,typecheck,test-types,lint,cycles,format-check}.log`，不纳入 Git。测试涵盖 SQLite 重启与副本隔离、非法/损坏/schema、逻辑身份、四动作与衰减、冲突反馈、并发幂等、基准重放/移除、持久事件先于 CAS、两次冲突后恢复、refresh、工具约束/批准前无写入/执行锁、真实 SQLite + 假 literature 的排序变化 demo，以及输出/落库失败边界。
+
+首次专项回归仅旧 Phase 4 禁止 ImpressionStore 断言失败，按本阶段范围更新；首次全量 4419 passing / 1 pending / 1 failing，唯一失败为工具目录尚未加入 recommendation_feedback，已更新，最终无失败。
+
+- npm run test:unit 初次沙箱执行受 tsx IPC `listen EPERM` 限制，经授权在沙箱外重跑。
+- 独立测试类型检查初次缺 Zotero ambient types；临时 /tmp/phase5-tsconfig.json 继承项目配置、显式 typings 与 Zotero/Node/Mocha 类型后通过，不修改项目 tsconfig。
+- 真实 Zotero / OpenAlex / embedding smoke：**not executed**。环境没有可用 Zotero 宿主；SQLite Node seam 和假 provider 不替代宿主验证。
+
+#### Architecture Red-Line Review
+
+只持久实际 Top-K；写失败不返回无可追溯推荐；反馈验证曝光与成员、append-only、相同逻辑事件幂等、不同动作共存；强度集中、正负分离、纯重放、source/count/version 可审计；事件优先 CAS、失败留事件、可 reconciliation；full refresh 保留反馈，点击不调用 Utility LLM。
+
+无自动导入、PDF/RAG evidence enrichment、推荐 UI、Scheduler/Digest、LLM ranking/解释反馈、向量库/向量持久化、训练、跨设备同步或 Multi-Agent。未改写历史标签或引入新 DB 依赖。
+
+#### Known Issues
+
+- 真实宿主 smoke 尚未执行，UUID/Zotero.DB/重启/实际对话确认仍需宿主验收。
+- 保留上游已有 1 项 pending 单测。
+- 不保存完整画像版本历史；当前只保存最新画像及纯主题基准，曝光保存学习需要的历史标签。
+- 推荐记忆点击始终需要确认，是当前安全框架下的明确选择。
+
+#### Deferred Work
+
+下一阶段仅建议 Top-K 的证据补全与有依据推荐理由。UI、Skill、Action、Digest/Scheduler、真正 import 与反馈链接、画像历史、跨设备同步继续另行设计，不在本阶段实现。
+
+#### Next Recommended Step
+
+在真实 Zotero 先验收 profile_get → candidate_discover → recommend → confirmed feedback → refresh/restart，然后开展 evidence-grounded recommendation。
 
 ### 2026-09-09 / recommendation-phase4-personalized-ranking
 
@@ -654,7 +793,15 @@ git diff --check
 
 ## Handoff Notes
 
-### Phase 4 当前交接（2026-09-09）
+### Phase 5 当前交接（2026-09-09）
+
+- 主入口 src/recommendation/feedback/service.ts；store/schema 位于 feedback/stores.ts，纯重放/更新独立可测；生产 ProfileService 已装配 replay。
+- 全量 4423 passing / 1 pending，专项 256 passing；typecheck/build/cycles/lint/format 均通过。真实 Zotero smoke not executed。
+- 反馈始终先落事件后 CAS，失败调用 reconcileProfileFeedback；不要删除事件或对已调整主题权重增量叠加。反馈工具的内部记忆作用域始终确认，不借用 Zotero journal/receipts。
+- 本轮源码、测试、原样需求、架构与日志纳入阶段交付；用户分析材料、依赖和 XPI 构建产物不纳入。
+- 下一步先做宿主验证，再开展推荐证据补全；save 尚不导入，UI/Digest/Scheduler 尚未实现。
+
+### Phase 4 历史交接（2026-09-09）
 
 - 纯排序入口 `src/recommendation/ranking/rankingService.ts`，生产工具 `src/agent/tools/recommendation/researchRecommend.ts`，embedding 接口只在 Agent services 接到既有 llmClient。
 - 阶段实现提交/标签为 `743e0b81` / `phase-4`；用户已授权本轮提交和远端推送。另追加交付日志提交到 main，保留 phase-4 指向已验收的实现提交；目标仅为个人 origin。阶段需求原样纳入，用户分析文件不纳入。
