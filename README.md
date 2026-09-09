@@ -33,6 +33,45 @@ Documentation:
   <img src="./assets/demo2.png" alt="Screenshot of the llm-for-zotero sidebar inside the Zotero PDF reader" width="1024" />
 </p>
 
+## Personalized Research Intelligence
+
+This project builds a personalized research-intelligence layer on top of the
+existing **llm-for-zotero** Agent/RAG/Zotero infrastructure. It reuses Zotero
+integration, Agent Runtime and Tool Registry, literature search adapters, RAG/PDF
+services, provider abstraction, and confirmation/change-journal infrastructure.
+The added layer provides a long-term ResearchProfile, multi-route candidate
+discovery, deterministic ranking and MMR diversity, grounded recommendation
+evidence, feedback-driven profile updates, offline evaluation, and the built-in
+`research-intelligence` Agent Skill.
+
+```mermaid
+flowchart TD
+    A[Zotero Library] --> B[ResearchProfile]
+    B --> C[Query + Seed Recall]
+    C --> D[Candidate Pool]
+    D --> E[Personalized Rank + MMR]
+    E --> F[Grounded Evidence]
+    F --> G[Recommendation]
+    G --> H[Explicit User Feedback]
+    H --> B
+```
+
+In plugin Agent mode, ask naturally:
+
+- “根据我的研究兴趣推荐 5 篇值得读的论文。”
+- “为什么第 1 篇适合我？”
+- “第 2 篇我很喜欢，第 4 篇不感兴趣。”
+- “更新我的研究画像后再推荐一次。”
+- “Give me a personalized research digest.”
+
+A digest is an on-demand presentation of current recommendations. Feedback uses
+existing confirmation, and “save” records preference only; adding a paper to
+Zotero is a separate confirmed import. This capability is available in plugin
+Agent mode; recommendation tools are not exposed to the external backends.
+Offline routing and workflow contracts are tested; live model/provider and real
+Zotero host validation remain pending. See the [demo](docs/research-intelligence-demo.md)
+and [workflow evaluation](docs/research-intelligence-workflow-eval.md).
+
 ## Table of Contents
 
 - [At a Glance](#at-a-glance)

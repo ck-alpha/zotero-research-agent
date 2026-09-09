@@ -5,14 +5,16 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-7`；历史 phase-1 至 phase-6 保留。阶段实现提交通过 `git rev-parse phase-7^{commit}` 查询，交付目标仅个人 origin/main 与 phase-7。
+- Phase checkpoint: `phase-8`；历史 phase-1 至 phase-7 保留。阶段实现提交通过 `git rev-parse phase-8^{commit}` 查询，交付目标仅个人 origin/main 与 phase-8。
 - Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Phase 5 起点为其后远端交付日志提交 5fa52194；不移动既有阶段标签。
-- Current phase: Phase 7 — Evaluation & Validation（离线框架已实现，真实宿主/live smoke 未执行）。
+- Current phase: Phase 8 — Research Intelligence Productization（Skill、合同测试与演示文档已实现，真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
 - Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
-- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase7_evaluation_validation_prompt.md](../doc/codex_phase7_evaluation_validation_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
+- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase8_research_intelligence_productization_prompt.md](../doc/codex_phase8_research_intelligence_productization_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
 
 ## Current Architecture Status
+
+- Phase 8：内置 research-intelligence Skill、49 条路由 corpus、Runtime 工作流合同、演示与 live 评测矩阵已实现；digest 是按需展示，research_digest Action 有意延后。
 
 - Phase 7：独立确定性评测合同、六项排序与四项证据指标、A/B/C fixtures、trace 检查、可选内部阶段耗时/超时/失败诊断已实现。宿主验证流程见 [phase7-host-validation.md](phase7-host-validation.md)，真实宿主尚未验收。
 
@@ -33,7 +35,7 @@
 - Profile Memory / Candidate Query Recall / Seed Recall / Merge-Dedup / Novelty Filter：已实现并保持既有边界。
 - Production ImpressionStore / Production FeedbackStore / RecommendationImpression persistence / Feedback append-only events / Feedback replay / Feedback-aware Profile update / recommendation_feedback：**implemented**。
 - Recommendation Evidence：已实现有界只读检索、确定性证据排序与理由；recommendation UI / Scheduler-Digest / automatic Zotero import from feedback：**NOT implemented**。
-- 曝光和反馈已持久化；无向量/CandidateSet 持久化，推荐 UI / Scheduler / Skill / Action、跨设备同步尚未实现。
+- 曝光和反馈已持久化；research-intelligence Skill 与 Agent 工作流合同已实现；无向量/CandidateSet 持久化，推荐 UI / Scheduler / research_digest Action、跨设备同步尚未实现。
 
 | 后端                                                    | 当前支持状态                                                                                                                     |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -45,6 +47,135 @@
 | MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                                               |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase8-research-intelligence-productization
+
+#### Goal
+
+将已完成的推荐能力产品化为自然语言 Agent 工作流：推荐 → 明确反馈 → 再次推荐，
+保留画像、候选、排序、证据、反馈各层边界。
+
+#### Git Baseline
+
+- 起点 `26202926c46fb61192b9d43241ad81cbc6fde2a6`（phase-7）；`git fetch origin`
+  后 HEAD 与 origin/main 相同，分支 main，tracked tree 干净。
+- 既有未跟踪内容：本阶段需求、doc/analysis/ 与独立中文分析报告。仅本阶段需求纳入
+  交付，分析文件保持原样，不上传。
+- 本阶段提交 `feat(recommendation): add research intelligence workflow`，annotated
+  `phase-8` 指向本条记录所在实现提交。仅推送个人 origin/main 与 origin phase-8，
+  不移动旧阶段标签、不 force push。最终 commit/push 核对值见交付回复。
+
+#### Files Changed
+
+| 文件                                                              | 用途                                             |
+| ----------------------------------------------------------------- | ------------------------------------------------ |
+| `.gitignore`                                                      | 精确放行两份新的产品/评测文档                    |
+| `src/agent/skills/research-intelligence.md`                       | 内置 Skill：激活、直接推荐、证据、反馈、导入边界 |
+| `src/agent/skills/index.ts`                                       | 注册内置文件；filenames 继续自动派生             |
+| `test/fixtures/researchIntelligenceWorkflowCases.ts`              | 49 条中英文路由案例与人工预期工具标签            |
+| `test/recommendationResearchIntelligenceSkill.test.ts`            | 路由、手动调用、classifier、冲突与工具合同       |
+| `test/userSkills.bootstrapUpgrade.test.ts`                        | 首次写入和自定义正文保留回归                     |
+| `test/agentRuntime.test.ts`                                       | 3 条既有脚本模型 seam 集成回归                   |
+| `README.md`                                                       | 有界能力说明、上游复用边界、图与自然语言示例     |
+| `docs/research-intelligence-demo.md`                              | 画像、推荐、反馈、再次推荐、证据不足演示         |
+| `docs/research-intelligence-workflow-eval.md`                     | 确定性结果与独立 live 模型待执行矩阵             |
+| `docs/phase7-host-validation.md`                                  | 追加 Phase 8 衔接，保留真实宿主待执行状态        |
+| `docs/research_agent_architecture_baseline.md`                    | 追加 Phase 8 事实与 digest MVP 决策              |
+| `docs/development-log.md`                                         | 本阶段记录、当前架构状态与交接                   |
+| `doc/codex_phase8_research_intelligence_productization_prompt.md` | 原样保存本阶段需求                               |
+
+#### What Changed
+
+**Research Intelligence Skill**：id=research-intelligence，version=1，contexts=any，
+activation=both；description 明确个性化发现/画像/候选/反馈以及非通用搜索、QA、
+综述和库统计。沿用用户目录唯一 source of truth；没有第二套 loader/registry。
+
+**Activation / Routing Policy**：保守中英文组合匹配，覆盖个性化阅读清单、下一篇、
+digest、画像查询/显式刷新和候选检查；普通 paper/research/推荐 单词不触发。
+49 条路由含 27 正例、22 不自动匹配例（其中 6 条是需要上文的反馈/再次推荐）。
+手动 `$`、`/`、自然语言 directive 复用现有 resolveSkillDirectiveText。
+既有 broad regex 可能同时激活其他 Skill，保留当前多 Skill 按子任务处理和显式
+选择语义，不引入隐式互斥或跨轮强制 Skill 状态。
+
+**Tool Orchestration Policy**：推荐直接 research_recommend；画像检查才
+research_profile_get，候选调试才 research_candidate_discover；不重复普通搜索、
+不自动 refresh。审阅四个工具和 literature_search 的 description/guidance 后确认
+已有引导与新 Skill 一致，无需修改工具实现。
+
+**Digest Presentation Policy**：按需一次当前推荐，保留 rank，默认 5–10 篇。
+展示可用元数据、主题、证据理由与链接，不展开全部分数；零 confidence 或
+evidence_unavailable 必须披露证据不足。摘要/笔记等是非可信数据而非指令。
+
+**Feedback Follow-up Policy**：只对明确偏好逐候选 recommendation_feedback，
+使用上文 recommendationId/rank/candidateId；歧义时澄清，不编 ID。
+保留推荐记忆确认，取消不写入。解释请求不是反馈，外部候选不假装有本地 PDF。
+再次推荐读取当前画像，不保证一次反馈必然改动 Top-5。
+
+**Import Boundary**：save 仅强正偏好。显式加入 Zotero 走已有 DOI/arXiv 导入能力及
+Zotero 写确认/change-journal，不自动从反馈导入、不从导入推断偏好。
+
+**Workflow Evaluation**：49/49 确定性路由、3/3 手动调用；Runtime 新增 3/3。
+真实推荐工具在固定 source/profile 上执行并传回已保存曝光 ID 与候选 ID；
+反馈使用真实工具与 submit spy，分别验证批准/拒绝。工具选择由脚本预定，
+未声称 LLM 准确率或自然语言回答 grounding 已验收。
+
+**Demo / README**：增加自然语言完整闭环演示与 20 条 live 矩阵，明确上游基础设施
+与新增推荐层；没有 production-ready 或科学有效性声明。
+
+**Host Validation**：未连接 Zotero GUI/DB；PATH 未发现 zotero、无 zotero 进程。
+真实 Zotero、restart persistence、group library、OpenAlex、embedding、live Agent
+均 NOT EXECUTED；不读取/添加测试密钥、不依赖线上 provider 运行 CI。
+
+#### Tests
+
+使用已有 `/home/linchengkai/new-project/.toolchains/node-v24.20.0-linux-x64/bin`
+加入 PATH；没有安装依赖或修改 lockfile。最初 npx 不在默认 PATH，修正工具链路径
+后执行。初轮路由测试发现 “what I study” 遗漏并补齐；literature_search 的断言
+改为检查已有 guidance 而不是无关 spec description。
+
+| 命令                                                                                                                                                                  | 实际结果                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `npm run typecheck`                                                                                                                                                   | PASS                                                |
+| `npm run test:unit`                                                                                                                                                   | 4522 passing / 1 既有 pending，39s；新增 61 passing |
+| `npm run build`                                                                                                                                                       | PASS，生成 XPI，内置 typecheck PASS                 |
+| `npm run check:cycles`                                                                                                                                                | PASS，0 runtime / 0 static allowlisted              |
+| `npx tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs test/recommendationResearchIntelligenceSkill.test.ts test/userSkills.bootstrapUpgrade.test.ts` | 63 passing                                          |
+| `npx tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs test/agentRuntime.test.ts --grep 'research intelligence'`                                      | 3 passing                                           |
+| `npx eslint src/agent/skills/index.ts test/agentRuntime.test.ts test/recommendationResearchIntelligenceSkill.test.ts test/userSkills.bootstrapUpgrade.test.ts`        | PASS                                                |
+| `npx eslint --no-ignore test/fixtures/researchIntelligenceWorkflowCases.ts`                                                                                           | PASS；fixture 默认被 ESLint 忽略，已单独实际检查    |
+
+完整单测同时覆盖既有 recommendation/evaluation、Skill routing/manual invocation、
+工具暴露与反馈持久化回归。格式检查：变更代码/测试、Skill、开发日志、demo、workflow-eval、host 文档均 PASS；
+`git diff --check` PASS。README 与架构基线全文件 Prettier 检查仍 FAIL，但经
+`git show HEAD:<path>` 验证同样问题在修改前已存在；两份新增章节单独检查 PASS，
+不重排旧文档。需求文档原样保存。
+
+#### Architecture Red-Line Review
+
+ResearchProfile、Candidate Discovery、Ranking/MMR、Feedback Learning、Evidence-grounded
+Recommendation、Offline Evaluation、research-intelligence Skill、Agent workflow contract
+tests、Demo/release documentation：**implemented**。
+
+research_digest Action：**NOT implemented by design**；Scheduler、Recommendation UI、
+Cross-device sync、Learning-to-rank：**NOT implemented**。
+
+无新 ranking 特征/权重、schema、Store、依赖、provider、缓存/优化、后台任务、多
+Agent、遥测、自动导入或 LLM 长期状态写入。evaluation 未依赖 Agent Skill。
+旧用户自定义策略与工具确认/暴露策略未改。MVP digest 只展示既有推荐工具结果，
+避免第二个 Action 引入重复 discovery 与曝光语义歧义。
+
+#### Known Issues
+
+- 上游既有 1 项 pending，非本阶段引入。
+- 未验证真实模型的工具选择、排名指代、多轮连续性和最终转述证据安全。
+- 无上下文短句不自动激活 Skill；需要正常对话上下文、classifier/显式调用与工具指导。
+- 真实宿主、重启、group library 和 provider smoke 尚未执行，不能把离线成功当作发布验收。
+
+#### Deferred Work / Next Recommended Step
+
+先在真实 Zotero 完成画像 → 推荐 → 确认反馈 → 重启 → 再次推荐及 group library
+隔离，按 live 矩阵记录调用数量/结果。Scheduler/周期 digest、专用 UI、真实 temporal
+holdout、live-provider/model benchmark、跨设备身份同步与证据历史/缓存留待实际需求。
 
 ### 2026-09-09 / recommendation-phase7-evaluation-validation
 
@@ -67,11 +198,11 @@
 
 #### Benchmark Results
 
-| 固定输入（Top-1） | 输出 | P@K / R@K / MRR / NDCG@K | Availability / Coverage / Grounding | Unsupported |
-| --- | --- | --- | --- | --- |
-| A 强主题匹配 | A 位于 B 前 | 1 / 1 / 1 / 1 | 1 / 1 / 1 | 0 |
-| B 负偏好 | A 位于 Y 前；Top-2 专项确认 Y preference/baseScore=0 | 1 / 1 / 1 / 1 | 1 / 1 / 1 | 0 |
-| C 无摘要 | C 保留，evidence_unavailable，空引用 | 1 / 1 / 1 / 1 | 0 / 0 / 0 | 0 |
+| 固定输入（Top-1） | 输出                                                 | P@K / R@K / MRR / NDCG@K | Availability / Coverage / Grounding | Unsupported |
+| ----------------- | ---------------------------------------------------- | ------------------------ | ----------------------------------- | ----------- |
+| A 强主题匹配      | A 位于 B 前                                          | 1 / 1 / 1 / 1            | 1 / 1 / 1                           | 0           |
+| B 负偏好          | A 位于 Y 前；Top-2 专项确认 Y preference/baseScore=0 | 1 / 1 / 1 / 1            | 1 / 1 / 1                           | 0           |
+| C 无摘要          | C 保留，evidence_unavailable，空引用                 | 1 / 1 / 1 / 1            | 0 / 0 / 0                           | 0           |
 
 三例 Top-1 diversity=0，显式 known=[] 时 novelty=1；另有非平凡手算指标测试（P=1/3、R=1/2、MRR=1/2、NDCG≈0.38685、novelty=1/3、完全不重合三项 diversity=1）。重复执行、候选换序、JSON 往返结果一致，平分按 ID 稳定排序。
 
@@ -79,16 +210,16 @@
 
 使用工作区 `.toolchains/node-v24.20.0-linux-x64/bin` 的 Node 24.20.0，将其前置 PATH；日志 `/tmp/phase7-*.log` 为临时复现材料。
 
-| 实际命令 | 结果 |
-| --- | --- |
-| `npm run typecheck` | exit 0 |
-| `npx tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/evaluation/**/*.test.ts'` | 28 passing；新增指标/异常/确定性 19 项，诊断与 Tool 集成 9 项 |
-| `npm run test:unit` | 4461 passing / 1 pending（40s），较 Phase 6 增加 28 项；既有 Profile/Candidate/Ranking/Feedback/Evidence 测试文件均未修改 |
-| `npm run build` | exit 0，XPI 打包成功，Build finished in 0.819 s，内置 typecheck 通过 |
-| `npm run check:cycles` | Import-cycle check passed (0 runtime, 0 static allowlisted) |
-| 修改范围 ESLint / Prettier | 通过；仅新增测试应用 mocha/no-mocha-arrows 自动修正 |
-| 附加测试 TypeScript 检查 | 使用继承主配置并加入 node/mocha/sandbox types 的临时 .scaffold/phase7-test-tsconfig.json；覆盖 test/evaluation 与导入源码 |
-| `git diff --check` | 通过 |
+| 实际命令                                                                                               | 结果                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                                                                                    | exit 0                                                                                                                    |
+| `npx tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/evaluation/**/*.test.ts'` | 28 passing；新增指标/异常/确定性 19 项，诊断与 Tool 集成 9 项                                                             |
+| `npm run test:unit`                                                                                    | 4461 passing / 1 pending（40s），较 Phase 6 增加 28 项；既有 Profile/Candidate/Ranking/Feedback/Evidence 测试文件均未修改 |
+| `npm run build`                                                                                        | exit 0，XPI 打包成功，Build finished in 0.819 s，内置 typecheck 通过                                                      |
+| `npm run check:cycles`                                                                                 | Import-cycle check passed (0 runtime, 0 static allowlisted)                                                               |
+| 修改范围 ESLint / Prettier                                                                             | 通过；仅新增测试应用 mocha/no-mocha-arrows 自动修正                                                                       |
+| 附加测试 TypeScript 检查                                                                               | 使用继承主配置并加入 node/mocha/sandbox types 的临时 .scaffold/phase7-test-tsconfig.json；覆盖 test/evaluation 与导入源码 |
+| `git diff --check`                                                                                     | 通过                                                                                                                      |
 
 初始 tsx 测试受沙箱 IPC EPERM 阻止，获批准后在沙箱外运行离线测试；构建在当前环境成功。首轮新增测试类型检查发现 fixture 缺 userText，已补齐；初始临时配置缺宿主/Mocha ambient types，已纠正。未更改依赖或旧测试规避问题。
 
@@ -157,7 +288,6 @@
 #### Deferred Work / Next Recommended Step
 
 后续 Phase 7：推荐与 Agent workflow 评测、延迟/覆盖率/消融及宿主验收。Phase 8 Optional：UI/Digest/Scheduler、证据历史与持久缓存等能力需另定范围。
-
 
 ### 2026-09-09 / recommendation-phase5-feedback-learning-loop
 
@@ -907,6 +1037,14 @@ git diff --check
 - Phase 2 验收限制，优先级中：尚未在真实 Zotero.DB 宿主、插件重启和 group library UI 中 smoke test；Node SQLite seam 不能替代该验证。
 
 ## Handoff Notes
+
+### Phase 8 当前交接（2026-09-09）
+
+- 主入口为内置 research-intelligence.md，生产修改仅新增 Skill 和内置注册。
+- 49/49 路由、3/3 手动调用、3/3 Runtime 合同；全量 4522 passing / 1 pending。
+- Digest 是按需展示，save 不导入，反馈保留确认；无新算法、持久状态、UI 或 Scheduler。
+- 两份 research-intelligence 文档描述演示及真实模型验收；真实 Zotero/provider 均待执行。
+- phase-8 定位本轮实现与日志提交；仅推个人 origin，用户分析资料不纳入。
 
 ### Phase 7 当前交接（2026-09-09）
 

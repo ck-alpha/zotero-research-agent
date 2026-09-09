@@ -1,3 +1,9 @@
+import { createRecommendationFeedbackTool } from "../src/agent/tools/recommendation/recommendationFeedback";
+import { createResearchRecommendTool } from "../src/agent/tools/recommendation/researchRecommend";
+import { IndexedResearchLibrarySource } from "../src/recommendation/profile/librarySource";
+import { ProfileBuilder } from "../src/recommendation/profile/profileBuilder";
+import { indexSnapshot, PROFILE_NOW } from "./helpers/researchProfileFixtures";
+import { InMemoryImpressionStore } from "./helpers/recommendationStores";
 import { assert } from "chai";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -336,6 +342,213 @@ describe("AgentRuntime", function () {
     clearAgentTranscriptStore();
     clearAgentToolResultHandleStore();
   });
+
+  it("research intelligence passes a real recommendation result to the scripted model", async function () {
+    const restoreDb = installMockDb();
+    try {
+      setUserSkills([
+        parseSkill(BUILTIN_SKILL_FILES["research-intelligence.md"]),
+      ]);
+      const source = new IndexedResearchLibrarySource({
+        getSnapshot: async () => indexSnapshot(),
+      });
+      const snapshot = await source.getLibrarySnapshot(1);
+      const profile = new ProfileBuilder().build({
+        libraryID: 1,
+        papers: snapshot.papers,
+        now: PROFILE_NOW,
+      });
+      const impressions = new InMemoryImpressionStore();
+      const registry = new AgentToolRegistry();
+      let profileReads = 0;
+      registry.register(
+        createResearchRecommendTool(
+          {
+            get: async (_libraryID, options) => {
+              profileReads++;
+              assert.isUndefined(options?.refresh);
+              return { profile, status: "loaded", warnings: [] };
+            },
+          },
+          source,
+          () => ({
+            search: async () => ({
+              papers: [
+                {
+                  title: "Agents research",
+                  doi: "10.1234/phase8",
+                  authors: [],
+                  provider: "openalex",
+                  abstract: "Agents research studies agents.",
+                },
+              ],
+              warnings: [],
+            }),
+            related: async () => ({ papers: [], warnings: [] }),
+          }),
+          {
+            now: () => PROFILE_NOW,
+            embeddingFactory: () => undefined,
+            impressionStore: impressions,
+          },
+        ),
+      );
+      let step = 0;
+      let continuation: AgentModelMessage[] = [];
+      const call = {
+        id: "phase8-recommend",
+        name: "research_recommend",
+        arguments: { topK: 5 },
+      };
+      const runtime = new AgentRuntime({
+        registry,
+        adapterFactory: () => ({
+          getCapabilities: () => ({
+            streaming: false,
+            toolCalls: true,
+            multimodal: false,
+          }),
+          supportsTools: () => true,
+          runStep: async (params) => {
+            if (step++ === 0) {
+              assert.include(
+                JSON.stringify(params.messages),
+                "### Skill: research-intelligence",
+              );
+              return {
+                kind: "tool_calls",
+                calls: [call],
+                assistantMessage: {
+                  role: "assistant",
+                  content: "",
+                  tool_calls: [call],
+                },
+              };
+            }
+            continuation = params.messages;
+            return {
+              kind: "final",
+              text: "Digest ready.",
+              assistantMessage: { role: "assistant", content: "Digest ready." },
+            };
+          },
+        }),
+      });
+      const events: AgentEvent[] = [];
+      const result = await runtime.runTurn({
+        request: {
+          conversationKey: 8001,
+          libraryID: 1,
+          mode: "agent",
+          userText: "根据我的研究兴趣推荐论文",
+          forcedSkillIds: ["research-intelligence"],
+          apiBase: "",
+          apiKey: "test",
+        },
+        onEvent: (event) => events.push(event),
+      });
+      assert.equal(result.kind, "completed");
+      assert.equal(profileReads, 1);
+      const toolResults = events.filter(
+        (event) => event.type === "tool_result",
+      );
+      assert.lengthOf(toolResults, 1);
+      const output = toolResults[0].content as {
+        recommendationId: string;
+        recommendations: Array<{ candidateId: string }>;
+      };
+      assert.isString(output.recommendationId);
+      assert.equal(output.recommendations[0].candidateId, "doi:10.1234/phase8");
+      assert.isNotNull(await impressions.load(output.recommendationId));
+      assert.include(JSON.stringify(continuation), output.recommendationId);
+      assert.include(
+        JSON.stringify(continuation),
+        output.recommendations[0].candidateId,
+      );
+    } finally {
+      setUserSkills([]);
+      restoreDb();
+    }
+  });
+
+  for (const approved of [false, true]) {
+    it(`research intelligence feedback preserves confirmation (approved=${approved})`, async function () {
+      const restoreDb = installMockDb();
+      try {
+        let submissions = 0;
+        const registry = new AgentToolRegistry();
+        registry.register(
+          createRecommendationFeedbackTool({
+            submit: async (input) => {
+              submissions++;
+              assert.equal(input.candidateId, "doi:10.1234/phase8");
+              assert.equal(input.action, "save");
+              return {
+                status: "recorded",
+                profileUpdated: true,
+                previousProfileVersion: 1,
+                newProfileVersion: 2,
+              } as never;
+            },
+          }),
+        );
+        const call = {
+          id: "phase8-feedback",
+          name: "recommendation_feedback",
+          arguments: {
+            recommendationId: "phase8-slate",
+            candidateId: "doi:10.1234/phase8",
+            action: "save",
+          },
+        };
+        const runtime = new AgentRuntime({
+          registry,
+          adapterFactory: () =>
+            new MockAdapter(
+              [
+                {
+                  kind: "tool_calls",
+                  calls: [call],
+                  assistantMessage: {
+                    role: "assistant",
+                    content: "",
+                    tool_calls: [call],
+                  },
+                },
+                {
+                  kind: "final",
+                  text: "Done.",
+                  assistantMessage: { role: "assistant", content: "Done." },
+                },
+              ],
+              { streaming: false, toolCalls: true, multimodal: false },
+            ),
+        });
+        let confirmations = 0;
+        await runtime.runTurn({
+          request: {
+            conversationKey: 8002,
+            libraryID: 1,
+            mode: "agent",
+            userText: "第二篇我想保存",
+            apiBase: "",
+            apiKey: "test",
+          },
+          onEvent: (event) => {
+            if (event.type === "confirmation_required") {
+              confirmations++;
+              assert.equal(submissions, 0);
+              runtime.resolveConfirmation(event.requestId, approved);
+            }
+          },
+        });
+        assert.equal(confirmations, 1);
+        assert.equal(submissions, approved ? 1 : 0);
+      } finally {
+        restoreDb();
+      }
+    });
+  }
 
   it("falls back when the adapter does not support tools", async function () {
     const restoreDb = installMockDb();

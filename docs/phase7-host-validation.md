@@ -106,3 +106,12 @@ Embedding 已有 deadline 与 evidence 单次读取/总预算超时有明确标�
 ## 验收记录模板
 
 每次人工执行填写：日期 / 验收者 / commit / Zotero 与 OS 版本 / library IDs / 操作与实际输出 / 耗时与 failureCode / pass、fail 或 blocked / 脱敏记录路径 / 剩余问题。记录需由验收者主动保管，无自动上传或用户追踪。
+
+## Phase 8 衔接（2026-09-09）
+
+内置 Skill、路由和脚本模型 Runtime 合同已补齐；没有可连接的 Zotero GUI/DB 宿主，
+本机 PATH 中未发现 Zotero 可执行文件，也未发现 Zotero 进程。上述真实宿主、重启、
+group library、OpenAlex、embedding 状态继续为 **NOT EXECUTED**。
+请从 [自然语言演示](research-intelligence-demo.md) 进入同一验收路径，按
+[工作流矩阵](research-intelligence-workflow-eval.md) 记录实际工具选择；离线结果不替代
+真实模型选择、最终回答证据质量或宿主持久性验证。

@@ -191,6 +191,21 @@ describe("user skill bootstrap upgrades", function () {
     globalScope.IOUtils = originalIOUtils;
   });
 
+  it("bootstraps research intelligence and preserves its customized body", async function () {
+    const files: Record<string, string> = {};
+    const prefs = new Map<string, string>();
+    installMockSkillEnvironment("/tmp/phase8-skill-bootstrap", files, prefs);
+    await initUserSkills();
+    const path = getCanonicalSkillFilePath("research-intelligence");
+    assert.equal(
+      parseSkill(files[path]).instruction,
+      parseSkill(BUILTIN_SKILL_FILES["research-intelligence.md"]).instruction,
+    );
+    files[path] += "\n\nMy customized digest format.\n";
+    await initUserSkills();
+    assert.include(files[path], "My customized digest format.");
+  });
+
   it("upgrades unmodified historical compare/evidence skills with no stored hashes", async function () {
     const baseDir = "/tmp/llm-for-zotero-bootstrap-test";
     installMockSkillEnvironment(baseDir, {}, new Map<string, string>());

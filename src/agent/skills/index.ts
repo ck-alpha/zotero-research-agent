@@ -16,6 +16,7 @@
 import { matchesSkill, parseSkill } from "./skillLoader";
 import type { AgentSkill } from "./skillLoader";
 import type { SkillRoutingRequest } from "./contextEligibility";
+import researchIntelligenceRaw from "./research-intelligence.md";
 import libraryAnalysisRaw from "./library-analysis.md";
 import comparePapersRaw from "./compare-papers.md";
 import analyzeFiguresRaw from "./analyze-figures.md";
@@ -57,6 +58,7 @@ export type {
  * Used by initUserSkills() to copy defaults to the user folder.
  */
 export const BUILTIN_SKILL_FILES: Record<string, string> = {
+  "research-intelligence.md": researchIntelligenceRaw,
   "library-analysis.md": libraryAnalysisRaw,
   "compare-papers.md": comparePapersRaw,
   "analyze-figures.md": analyzeFiguresRaw,

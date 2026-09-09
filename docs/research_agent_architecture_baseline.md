@@ -1411,3 +1411,23 @@ Memory Update
 而不是：
 
 > 一个堆叠大量 Agent 框架、Tool 和模型但缺乏清晰业务闭环的 Zotero Chatbot。
+
+
+## Phase 8 实现事实与 MVP 决策（2026-09-09）
+
+- 内置 `research-intelligence` Skill 已实现，复用现有 registry、用户目录 bootstrap、
+  classifier/regex 路由和显式 Skill 选择；contexts=any、activation=both。
+- 标准 Agent 工作流：画像检查 → `research_profile_get`；个性化推荐 → 直接
+  `research_recommend`；候选检查 → `research_candidate_discover`；明确偏好 →
+  `recommendation_feedback`。反馈保留推荐记忆确认；save 不导入，显式导入继续
+  使用既有 Zotero 写确认/change-journal。短反馈和再次推荐依赖对话中的推荐上下文。
+- “Research Digest”是 `research_recommend` 的展示方式。本阶段有意延后
+  `research_digest` Action，避免再次封装召回导致重复请求、曝光语义和生命周期歧义。
+  Scheduler、周期推荐和专用 UI 留作宿主验收与真实需求之后的可选工作。
+- 已加入中英文确定性路由、手动调用、bootstrap 定制保留、工具暴露与 Runtime
+  脚本模型合同测试；评测仍是 observer，没有让推荐 evaluation 依赖 Agent Skills。
+- 真实 Zotero、重启、group library、OpenAlex、embedding 和 live-model 工作流
+  均 NOT EXECUTED；具体矩阵见 research-intelligence-workflow-eval.md，宿主步骤
+  继续以 phase7-host-validation.md 为唯一检查清单。
+- 未改变 ranking/evidence/feedback 算法、schema、Store 或外部工具暴露；无新依赖、
+  LLM 长期状态写入、多 Agent、后台任务或遥测。
