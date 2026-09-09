@@ -19,7 +19,7 @@ export function createResearchCandidateDiscoverTool(
     spec: {
       name: "research_candidate_discover",
       description:
-        "Discover novel literature candidates from the current library's persistent research interests and representative papers. Optional focus applies only to this request. Results are in discovery order, without personalized ranking. Does not import papers or change Zotero items.",
+        "Inspect/debug novel literature candidates from the current library's persistent research interests and representative papers. Optional focus applies only to this request. Results are in discovery order, without personalized ranking. For personalized reading recommendations, call research_recommend directly; it already performs discovery. Does not import papers or change Zotero items.",
       inputSchema: {
         type: "object",
         additionalProperties: false,

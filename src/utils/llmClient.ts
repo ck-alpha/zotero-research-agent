@@ -4062,7 +4062,10 @@ export class EmbeddingUnsupportedError extends Error {
   }
 }
 
-export async function callEmbeddings(input: string[]): Promise<number[][]> {
+export async function callEmbeddings(
+  input: string[],
+  signal?: AbortSignal,
+): Promise<number[][]> {
   const resolvedEmbedding = getResolvedEmbeddingConfig();
 
   const apiBase = resolvedEmbedding.apiBase;
@@ -4090,6 +4093,7 @@ export async function callEmbeddings(input: string[]): Promise<number[][]> {
     method: "POST",
     headers: buildAuthHeaders(apiKey),
     body: JSON.stringify(payload),
+    ...(signal ? { signal } : {}),
   });
 
   if (!res.ok) {
@@ -4099,11 +4103,21 @@ export async function callEmbeddings(input: string[]): Promise<number[][]> {
 
   const data = (await res.json()) as EmbeddingResponse;
   const embeddings = data?.data || [];
-  // Only sort by index when all items carry valid indices; otherwise
-  // preserve the original order to avoid misaligning embeddings with inputs.
-  const hasIndices =
-    embeddings.length > 0 &&
-    embeddings.every((item) => typeof item.index === "number");
+  // Reject ambiguous indexed batches; never align duplicate/mixed indices to papers.
+  // Providers omitting indices entirely retain their response-order contract.
+  const hasIndices = embeddings.some((item) => item.index !== undefined);
+  if (
+    hasIndices &&
+    (embeddings.length !== input.length ||
+      embeddings.some(
+        (item) =>
+          !Number.isSafeInteger(item.index) ||
+          item.index! < 0 ||
+          item.index! >= input.length,
+      ) ||
+      new Set(embeddings.map((item) => item.index)).size !== input.length)
+  )
+    throw new Error("Invalid embedding response indices");
   const ordered = hasIndices
     ? [...embeddings].sort((a, b) => a.index! - b.index!)
     : embeddings;

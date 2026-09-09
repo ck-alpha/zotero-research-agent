@@ -97,6 +97,8 @@ export function makeCandidate(): RecommendationCandidate {
       graph: 0,
       recency: 1,
       feedback: -0.3,
+      preference: 0.9,
+      diversity: 0.2,
       baseScore: 0.7,
       finalScore: 0.6,
     },

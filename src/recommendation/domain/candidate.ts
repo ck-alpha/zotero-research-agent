@@ -22,13 +22,18 @@ export type CandidateProvenance =
       seedPaperId: string;
     };
 
-/** Finite values; scales and normalization belong to future scoring policy. */
+/** Phase 4 features/baseScore are in [0,1]; finalScore is signed MMR utility.
+ * Legacy finite scores remain valid for backwards compatibility. */
 export interface CandidateScores {
   semantic?: number;
   lexical?: number;
   graph?: number;
   recency?: number;
   feedback?: number;
+  /** Explicit negative-preference compatibility in [0,1]. */
+  preference?: number;
+  /** Max similarity to earlier selections at selection time, in [0,1]. */
+  diversity?: number;
   baseScore?: number;
   finalScore?: number;
 }

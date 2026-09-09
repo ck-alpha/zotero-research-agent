@@ -826,6 +826,8 @@ interface CandidateScores {
   graph?: number;
   recency?: number;
   feedback?: number;
+  preference?: number;
+  diversity?: number;
 
   baseScore?: number;
   finalScore?: number;
@@ -835,6 +837,12 @@ interface CandidateScores {
 必须保留 score breakdown。
 
 禁止只保存一个不可解释的 `score`。
+
+Phase 4 的 semantic / lexical / graph / recency / preference / baseScore / diversity
+均在 `[0,1]`。`preference` 是显式负偏好兼容度；`diversity` 是 MMR 选择该论文时与
+此前已选论文的最大相似度（首项为 0），并非多样性奖励。`finalScore` 是有符号 MMR 效用，
+可以为负，不是概率；`feedback` 在 Phase 4 保持 undefined。既有 finite score 合同保持兼容，
+新增 preference/diversity 在 runtime guard 中严格校验 `[0,1]`。
 
 ---
 
@@ -976,35 +984,38 @@ research-intelligence
 
 ---
 
-# 23. 推荐排序第一版规划
+# 23. Phase 4 推荐排序
 
-候选排序暂定：
+已实现独立 `src/recommendation/ranking/`：Candidate Pool → Feature Computation →
+Base Score → 稳定 Base Sort → MMR → RecommendedPaper[]。发现服务不排序，排序服务不执行外部召回。
 
-```text
-Score
-=
-α * Semantic
-+
-β * Lexical
-+
-γ * Graph
-+
-δ * Recency
-+
-η * Feedback
-```
-
-然后：
+确定性特征：词法主题/focus 匹配、仅 seed_recommendation 的 graph 信号、出版年份 recency、
+显式负偏好 compatibility。词法为正有效主题 `weight*confidence` 加权平均；有 focus 时
+`lexical = 0.60*focusMatch + 0.40*profileLexical`。负偏好与主题 ID/归一化标签冲突时不作为正主题。
 
 ```text
-Top N
-  ↓
-MMR
-  ↓
-Top K
+weights = { semantic: 0.45, lexical: 0.30, graph: 0.15, recency: 0.10 }
+rawRelevance = Σ(available weight * feature) / Σ(available weight)
+preference = clamp(1 - max(negativeStrength * textMatch), 0, 1)
+baseScore = clamp(rawRelevance * preference, 0, 1)
+finalScore = 0.80 * baseScore - 0.20 * maxSimilarityToSelected
 ```
 
-具体权重属于后续阶段，不在 Phase 1 实现。
+semantic 与未知 recency 缺失时为 undefined，移除相应权重后重新归一化，不记作 0。
+Base Sort 按 baseScore、lexical、可用 semantic 降序，candidateId 按固定字符串顺序升序打破平局。
+MMR 使用完整发现池，lambda=0.80；成对相似度优先请求内 embedding cosine（clamp 到 `[0,1]`），
+无语义向量则用 title + bounded abstract 的 token Jaccard。保留选择时的 diversity/finalScore。
+
+纯 `RankingEmbeddingProvider` 由 Agent adapter 注入，复用既有 checkEmbeddingAvailability、
+getResolvedEmbeddingConfig、callEmbeddings，使用用户已有专用 embedding 配置，不使用 Main Agent 模型。
+画像文本含 focus、最多 12 正主题、10 正偏好和 6 代表标题，总长 4000 字符；候选文本最多 1200 字符。
+按 32 条顺序分批，总截止时间 30 秒。数量、公共维度、finite 坐标、跨批 model identity 均校验；
+零向量的 cosine 为 0。任何批错误或超时丢弃整个请求的语义结果，警告后继续确定性排序，用户取消才取消请求。
+callEmbeddings 兼容增加可选 AbortSignal，传到既有 fetch；带索引的响应必须是完整唯一索引，避免向量错配。
+
+配置集中在 ranking/config.ts，可由测试覆盖且校验。工程默认值尚未通过离线推荐评测校准。
+本阶段不持久化 profile/candidate embedding、CandidateSet、RankingResult 或推荐曝光；
+不生产化 ImpressionStore/FeedbackStore，不实现反馈学习、LLM reranking 或推荐 PDF/RAG enrichment。
 
 ---
 
@@ -1104,7 +1115,7 @@ Seed 无 DOI 时跳过，不降级为 keyword search。最多 5 queries / 4 seed
 
 Candidate provenance 为必需的结构化 route/provider/providerRank/query/topicId/focus 或 seedPaperId；
 sources/seedPaperIds 从 provenance 派生并由 runtime guard 校验。先对整个 eligible library 做
-exact DOI / 保守书目 novelty 排除，再做跨路 deterministic dedup/merge，最后才交给未来 Ranking。
+exact DOI / 保守书目 novelty 排除，再做跨路 deterministic dedup/merge，最后才交给独立 Ranking。
 外部身份优先级 DOI → arXiv → OpenAlex → 保守书目；metadata 不足时保留独立 occurrence ID。
 Phase 3 CandidateScores 均为空，数组为 discovery order，不是 final personalized ranking。
 Candidate Pool 按设计不持久化，无 CandidateSetStore，也不对池批量读取 PDF/RAG。
@@ -1126,13 +1137,19 @@ abstract snippet 最多 400 字符；截断明确报告。其他聊天/外部后
 
 ## Phase 4 — Personalized Ranking
 
-实现：
+已实现 lexical / optional semantic / graph / recency / explicit preference、确定性 Base Ranker、
+独立 MMR 和可解释 score breakdown，公式与失败边界见第 23 节；feedback 留待 Phase 5。
 
-- semantic / lexical / graph / recency / feedback scoring；
-- Ranker；
-- MMR；
-- score breakdown；
-- `research_recommend`。
+`research_recommend({focus?,topK?})` 仅插件 Agent Runtime：read、无需确认、model exposure、
+localAgentOnly。直接调用 ProfileService.get → 当前 LibrarySnapshot → CandidateDiscoveryService →
+RankingService，使用完整内部候选池；不经 candidate Tool 摘要，不自动 refresh 已有画像。
+缺失画像沿用 Phase 2 首建行为，已有画像不因排序写入新版本。
+
+默认 Top-K=10、最多 20，少于 K 时返回全部；abstract snippet 最多 500 字符。
+返回 profileId/version、generatedAt/focus、rank、matchedTopics、metadata/provenance、分数和双阶段 diagnostics/warnings；
+不返回完整画像、原始向量或虚构持久 recommendationId。个性化请求直接优先此 Tool，
+candidate Tool 用于发现池检查，通用学术检索继续使用 literature_search。
+普通聊天、Codex App Server、Claude Code、WebChat/web_sync 和 MCP/public catalog 均未接入。
 
 ---
 

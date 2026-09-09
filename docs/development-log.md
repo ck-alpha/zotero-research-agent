@@ -5,12 +5,12 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-3`，对应本轮 Personalized Candidate Discovery 阶段提交；历史 `phase-1` / `phase-2` 保留。
-- Current HEAD / Phase 3 commit：由带注释标签 `phase-3` 标识，可用 `git rev-parse phase-3^{commit}` 获取完整哈希；阶段起点为 `279ccc62d959a52a518dff7a812c3a1856d1966b`（Phase 2）。提交内不记录自身哈希，避免自引用导致哈希失效。
-- Current phase: Phase 3 — Personalized Candidate Discovery（实现与自动化验收完成，真实宿主 smoke test 待执行）。
+- Phase checkpoint: `phase-4`，对应 Personalized Ranking + MMR 本地阶段提交；历史 `phase-1` / `phase-2` / `phase-3` 保留；本轮未推送远端。
+- Current HEAD / Phase 4 commit：由带注释标签 `phase-4` 标识，可用 `git rev-parse phase-4^{commit}` 获取完整哈希；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。提交内不记录自身哈希，避免自引用导致哈希失效。
+- Current phase: Phase 4 — Personalized Ranking + MMR（本地实现与自动化验收，真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
-- Phase 3 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase3_candidate_discovery_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
-- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase3_candidate_discovery_prompt.md](../doc/codex_phase3_candidate_discovery_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
+- Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
+- 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase4_personalized_ranking_mmr_prompt.md](../doc/codex_phase4_personalized_ranking_mmr_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
 
 ## Current Architecture Status
 
@@ -26,18 +26,191 @@
 - Profile Query Recall / Seed Recall / Candidate Merge & Dedup / Whole-library Novelty Filter：已实现；生产 provider 为 OpenAlex，候选评分为空，按发现顺序输出。
 - `research_candidate_discover`：已实现，仅插件 Agent，直接读取完整持久画像；focus 临时生效，候选池不持久化。
 - Phase 3 链路：完整 ResearchProfile + 当前 LibrarySnapshot → 双路 Recall → LiteratureSearchService adapter → Normalize → 全库排除 → Dedup/Merge → Candidate Pool → Agent Tool。
-- 尚未实现 Ranking / MMR / Feedback Learning、生产 FeedbackStore / ImpressionStore、推荐 UI / Scheduler / Skill / Action、Recommendation Evidence / 推荐 RAG、Embedding、跨设备同步。
+- Lexical Ranking / Optional Semantic Ranking / Graph-Seed Feature / Recency Feature / Explicit Preference Compatibility / Base Ranker / MMR / `research_recommend`：已实现。
+- Phase 4 链路：完整 Candidate Pool → Feature Computation → 可用权重归一化 Base Score → Base Sort → MMR → RecommendedPaper[] → 插件 Agent。
+- Profile Memory / Candidate Query Recall / Seed Recall / Merge-Dedup / Novelty Filter：已实现并保持既有边界。
+- Feedback Learning / Production ImpressionStore / Production FeedbackStore / Recommendation Evidence-RAG：**NOT implemented**。
+- 无向量/CandidateSet/推荐结果持久化；推荐 UI / Scheduler / Skill / Action、跨设备同步尚未实现。
 
-| 后端                                                    | Phase 3 支持状态                                                                       |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get` 与 `research_candidate_discover`；画像核心可无模型独立运行 |
-| 普通聊天                                                | 未接入                                                                                 |
-| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝                                       |
-| Claude Code                                             | 未接入；Tool 不在外部目录                                                              |
-| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                                                       |
-| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                     |
+| 后端                                                    | Phase 4 支持状态                                                                                      |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 插件内 Agent Runtime（现有 provider-safe Utility 通路） | 支持 `research_profile_get`、`research_candidate_discover`、`research_recommend`；无 embedding 可排序 |
+| 普通聊天                                                | 未接入                                                                                                |
+| Codex App Server                                        | 未接入；Tool 不在外部目录，authMode 可用性也拒绝                                                      |
+| Claude Code                                             | 未接入；Tool 不在外部目录                                                                             |
+| WebChat / web_sync                                      | 未接入；目录隔离及请求可用性拒绝                                                                      |
+| MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                    |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase4-personalized-ranking
+
+#### Goal
+
+完成完整 ResearchProfile + Novel Candidate Pool + 临时 focus → 确定性特征 → Personalized Base Rank → MMR → RecommendedPaper[] → research_recommend。Embedding 是可选特征；保持发现、排序、Agent orchestration 的职责分离。
+
+#### Git Baseline
+
+- Branch：`main`；starting commit：`474e2b73c419ddfdd10a786a3726b942585ed034`（`phase-3`）；upstream 固定基线不变。
+- 本阶段本地检查点使用 `feat(recommendation): add personalized ranking and mmr` 与带注释标签 `phase-4`；ending commit 由 `phase-4^{commit}` 查询，提交内不记录自身哈希。
+- 本轮只进行开发、验证和本地阶段提交，未执行远端推送。个人 origin 与 upstream 保持原配置，历史阶段标签不变。
+- 起始已存在未跟踪 `doc/analysis/`、阶段需求和独立中文分析报告。阶段需求原样纳入阶段交付；独立分析目录/报告不修改、不纳入提交。依赖、构建产物和凭据不纳入提交。
+
+#### Files Changed
+
+| 文件                                                          | 用途                                                                      |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/recommendation/ranking/contracts.ts`                     | 纯 RankingInput/Result、embedding provider、诊断合同                      |
+| `src/recommendation/ranking/config.ts`                        | 全部评分权重、MMR、文本/批次/超时/输出限制及校验                          |
+| `src/recommendation/ranking/textSimilarity.ts`                | Unicode 归一化、词组/词覆盖、Jaccard 与有界候选文本                       |
+| `src/recommendation/ranking/features.ts`                      | 词法、来源 graph、recency、负偏好及匹配主题                               |
+| `src/recommendation/ranking/semantic.ts`                      | 有界画像文本、顺序分批、向量校验、稳定 cosine、截止/取消/整体回退         |
+| `src/recommendation/ranking/scoring.ts`                       | 可用权重重新归一化、偏好乘数、稳定 base tie-break                         |
+| `src/recommendation/ranking/diversity.ts`                     | 独立 MMR、语义/Jaccard 相似度及选择时分数                                 |
+| `src/recommendation/ranking/rankingService.ts`                | 输入校验、快照隔离、评分→base sort→MMR→诊断                               |
+| `src/recommendation/domain/candidate.ts`                      | 新增 preference/diversity 并明确分数语义                                  |
+| `src/recommendation/domain/validation.ts`                     | 两个新增字段严格 `[0,1]`，保持历史 finite 字段兼容                        |
+| `src/agent/services/recommendationEmbeddingProvider.ts`       | 复用既有 embedding 配置/客户端的 Agent adapter                            |
+| `src/agent/tools/recommendation/researchRecommend.ts`         | 本地 Tool、scope/输入校验、服务编排、指导与有界结果                       |
+| `src/agent/tools/recommendation/researchCandidateDiscover.ts` | 引导个性化推荐直接使用 research_recommend                                 |
+| `src/agent/tools/index.ts`                                    | 新 Tool 生产装配及 literature guidance 的个性化分流                       |
+| `src/utils/llmClient.ts`                                      | 向后兼容可选 AbortSignal；拒绝重复/混合/越界 embedding response index     |
+| `test/recommendationRanking.test.ts`                          | 特征/评分/语义/MMR/取消/回退/输入隔离测试                                 |
+| `test/recommendationEmbeddingProvider.test.ts`                | 既有配置、payload、32 条分批、顺序、非法索引/向量、取消与旧 API 回归      |
+| `test/recommendationRecommendTool.test.ts`                    | 暴露、指导、参数、架构约束、真实 Node SQLite + fake recall/embedding 集成 |
+| `test/recommendationDomain.test.ts`                           | 新分数边界及负 finalScore 合同测试                                        |
+| `test/helpers/recommendationFixtures.ts`                      | 完整 fixture 增加 preference/diversity                                    |
+| `test/toolSurfaceRefactor.test.ts`                            | 更新插件 Agent 工具目录预期                                               |
+| `docs/research_agent_architecture_baseline.md`                | 局部更新 Phase 4 公式、模型边界、工具和延期事实                           |
+| `docs/development-log.md`                                     | 本阶段记录、当前架构、后端矩阵、决策和交接                                |
+| `doc/codex_phase4_personalized_ranking_mmr_prompt.md`         | 用户提供的阶段需求原样归档                                                |
+
+#### What Changed
+
+RankingService 不发现外部论文，CandidateDiscoveryService 保持原样且不排序。新 Tool 一次完成画像加载、当前全库 snapshot、双路候选发现及完整池排序；不解析另一个 Tool 的截断输出。结果保留候选 metadata、sources、seedPaperIds、provenance，新增 rank、matchedTopicIds 和每项分数。输入对象在异步 embedding 前创建独立快照，旧候选 scores 不参与本次评分，feedback 不输出。
+
+#### Architecture Decisions
+
+- 领域层只接收纯数据、RankingEmbeddingProvider 和 AbortSignal，不导入 Agent、Zotero UI、llmClient 或 retrieval UI 模块。既有 PDF cosine/MMR 实现已检查，不为复用小型数学函数引入 UI 依赖。
+- 固定 profile/candidates/focus/now/semantic features 得到固定结果。候选先按 ID 确定 embedding 顺序；聚合、base tie-break 与 MMR 不依赖网络完成顺序或运行环境 locale。
+- 默认参数是工程起点，不是科学结论；测试可覆盖配置。Tool 不接受权重、lambda、provider URL、模型、libraryID 或候选列表。
+- 缺失画像沿用 Phase 2 首建；已保存画像始终加载，不自动 refresh，不写新版本。显式 refresh 仍通过 research_profile_get。
+
+#### Feature Computation
+
+文本先 NFKC、小写（含 ß→ss、ς→σ）、trim/空白折叠，按 Unicode letter/number 提取 token，不引入 NLP 依赖。词法/MMR 文本是 title + 换行 + abstract，总长最多 1200 字符。
+
+`match(text,label)`：归一化非空完整词组包含时为 1，否则为去重 topic token 的覆盖比例；无有效 token 为 0。是可解释的词组包含/覆盖启发式，不声称词形还原或跨语言语义理解。
+
+正主题为 weight×confidence > 0 且不与负偏好 ID/归一化 label 冲突的画像主题；按 strength 降序、ID 升序。`profileLexical = Σ(strength * match)/Σ(strength)`，无正主题为 0。有 focus 时 `lexical = 0.60*focusMatch + 0.40*profileLexical`，否则 lexical=profileLexical。
+
+matchedTopicIds 来自上述正主题，match≥0.50 或 profile_query provenance 明确携带已存在 ID；按 strength/ID 稳定排序，最多 8，不凭外部未知 ID 创造主题。
+
+`graph = max(1/log2(providerRank+1))`，仅 seed_recommendation；无 seed 为 0，profile_query providerRank 不贡献 graph。
+
+recency 从 trim 后开头四位年份解析（后接结束、日期分隔符或空白），接受 1000..currentYear+1；无可信 leading year 为 undefined。使用 UTC 当前年份，`age=max(0,currentYear-year)`，`recency=2^(-age/3)`；明年预发表按年龄 0，荒谬未来年份不计时效。只使用出版年份，不把发现时间当出版新鲜度。
+
+#### Semantic Embedding Boundary
+
+Agent adapter 复用 `checkEmbeddingAvailability / getResolvedEmbeddingConfig / callEmbeddings`，专用 embedding 设置是唯一模型来源；不创建新设置或客户端。适配器记录既有 config attemptKey，调用前后检查配置未变化，避免同一请求混用模型/端点。
+
+画像表示依次为 focus、前 12 正主题、前 10 正强度偏好、前 6 正权重代表论文标题；稳定按权重/ID 排序，总长最多 4000 字符。与负偏好同标签的正偏好也不作为正语义信号。负偏好列表、evidenceRefs、历史对话、PDF 和完整库文本不进入表示。候选仅 title + bounded abstract，最多 1200 字符。
+
+RankingService 按 32 条顺序分批（80 个候选加画像最多 3 批），整个语义阶段截止 30,000ms。数量必须等于 batch 文本数，维度共同且非零，坐标必须 finite；模型 identity 跨批一致。零向量是合法向量，cosine=0；先按最大绝对坐标缩放，避免大 finite 坐标平方溢出。`semantic=clamp(cosine(profile,candidate),0,1)`，零 cosine 不映射为 0.5。
+
+既有 callEmbeddings 新增可选 signal 并传入 fetch；响应有 index 时必须是完整唯一的 0..N-1，全部无 index 的旧 provider 保持响应顺序约定。adapter 与 domain 分别校验，任何批出错丢弃所有向量。无配置、无正画像文本、API/不支持 provider、无效向量、超时均返回紧凑 warning 后继续；不泄露原始错误或凭据。用户 abort 则取消请求；即使依赖不响应 abort，deadline/race 仍及时结束且不开始后续批。
+
+向量只活在请求中：无 vector database、ProfileEmbeddingRef/candidate vector 写入或缓存；不把向量放入结果/诊断。
+
+#### Base Scoring Formula
+
+```text
+weights = semantic 0.45, lexical 0.30, graph 0.15, recency 0.10
+rawRelevance = Σ(weight_i * feature_i) / Σ(weight_i for available features)
+baseScore = clamp(rawRelevance * preference, 0, 1)
+```
+
+lexical/graph 始终可用；semantic/recency 缺失为 undefined，相应权重移出分母。配置要求 lexicalWeight+graphWeight>0，保证最小特征集可评分。全精度计算和排序；baseScore、lexical、可用 semantic 降序，再 candidateId 按固定字符串比较升序。不存在 LLM tie-break 或 LLM reranking。
+
+#### Preference Policy
+
+`negativeConflict = max(strength * match(candidate, negativeLabel))`，无负偏好为 0；`preference=clamp(1-negativeConflict,0,1)`。乘在已归一化 relevance 上；弱部分匹配不删除论文，preference=0 使 baseScore=0。正偏好通过画像主题及语义表示表达，不另加正偏好分数。feedback 在本阶段始终 unused/undefined。
+
+#### MMR Policy
+
+完整 base-sorted 池上贪心选 Top-K，`utility=0.80*baseScore-0.20*maxSimilarityToSelected`；同 utility 保留 base ordering。pairwise 优先语义 cosine clamp `[0,1]`，否则对同一 1200 字符候选文本做 token Jaccard，空集合相似度为 0。缓存每个剩余候选已遇到的最大相似度，每轮只与最近选择项比较。
+
+首项 diversity=0；后续 diversity 为选择当时的最大相似度；finalScore 为该次 utility，可以为负，不是概率。输出沿 MMR 选择顺序 rank=1..K，不再按四舍五入分数重新排列。默认 K=10、最大 20，无 filler。
+
+#### Agent Tool
+
+`research_recommend({focus?:string,topK?:integer})`；focus 复用 Phase 3 校验（最多 300 字符、归一化临时生效），scope 来自当前上下文。read、requiresConfirmation=false、exposure=model、localAgentOnly=true。后端隔离沿用 Phase 2/3，详见当前支持矩阵。
+
+输出 profileId/version、generatedAt、focus、recommendationCount、recommendations、discoveryDiagnostics、rankingDiagnostics、warnings。每篇含 rank、metadata/标识符/URL、matchedTopics{id,label}、score breakdown、sources/seedPaperIds/provenance。仅序列化时分数保留 4 位小数；abstract≤500、title≤300、authors≤20、每个作者≤120 字符，字段截断返回 ranking_tool_output_truncated。Top-K 选择本身不是异常截断。
+
+诊断包含 inputCandidateCount、semanticRequested、semanticSucceeded、semanticCandidateCount、semanticFallback、topKRequested/Returned。空池不请求 embedding，返回 ranking_candidate_pool_empty；有池但无可用 semantic 则 fallback=true。无持久 recommendationId。
+
+个性化文献请求直接优先 research_recommend，避免先调用 candidate Tool 重复请求；candidate Tool 用于检查/调试，generic literature_search 保持原有行为。匹配指导同时要求文献/阅读语境，避免接管电影/旅行等偏好请求。
+
+#### Centralized Config
+
+| 配置                                                                           | 值                        |
+| ------------------------------------------------------------------------------ | ------------------------- |
+| semantic/lexical/graph/recency Weight                                          | 0.45 / 0.30 / 0.15 / 0.10 |
+| mmrLambda / recencyHalfLifeYears                                               | 0.80 / 3                  |
+| focusLexicalWeight / matchedTopicThreshold                                     | 0.60 / 0.50               |
+| maxLexicalCandidateChars / maxSemanticCandidateChars                           | 1200 / 1200               |
+| maxSemanticTopics / maxSemanticPositivePrefs / maxSemanticRepresentativePapers | 12 / 10 / 6               |
+| maxSemanticProfileChars / semanticBatchSize / semanticTimeoutMs                | 4000 / 32 / 30000         |
+| maxMatchedTopics / toolDefaultTopK / toolMaxTopK                               | 8 / 10 / 20               |
+| toolAbstractSnippetChars / toolTitleChars / toolMaxAuthors / toolAuthorChars   | 500 / 300 / 20 / 120      |
+
+所有值来自 ranking/config.ts，有限值、范围/正整数校验；半衰期为正实数。测试可覆盖，生产 Tool 不接受模型自选参数。
+
+#### Tests
+
+使用已有 Node v24.20.0，PATH=`/home/linchengkai/new-project/.toolchains/node-v24.20.0-linux-x64/bin:$PATH`，不安装依赖，不调用真实模型/API。以下为本轮实际执行结果。
+
+| 命令 / 检查                                                                                                                                                                                                                         | 结果                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                                                                                                                                                                                                                 | 通过；build 同样内置执行                                                                                                                                    |
+| `node --import tsx node_modules/mocha/bin/mocha.js --require ./test/register.cjs 'test/recommendation*.test.ts' test/toolSurfaceRefactor.test.ts test/searchLiteratureOnlineTool.test.ts test/llmClient.prepareChatRequest.test.ts` | 248 passing；包含 Phase 1/2/3、Tool surface、generic literature、旧 embedding API 回归                                                                      |
+| `npm run test:unit`                                                                                                                                                                                                                 | 4394 passing、1 pending；比 Phase 3 新增 44 项，无新增 pending                                                                                              |
+| `npm run build`                                                                                                                                                                                                                     | 通过；`.scaffold/build/llm-for-zotero.xpi`，不纳入源码提交                                                                                                  |
+| `node node_modules/typescript/bin/tsc --noEmit -p /tmp/phase4-tsconfig.json`                                                                                                                                                        | 通过；额外覆盖新 ranking/adapter/tool 与 domain 测试及其 imports。临时配置继承主 tsconfig，显式引入 Zotero/Node/Mocha 类型，关闭 composite/incremental      |
+| `npm run check:cycles`                                                                                                                                                                                                              | 通过，0 runtime / 0 static allowlisted                                                                                                                      |
+| `eslint <本轮 TS 文件>`                                                                                                                                                                                                             | 通过                                                                                                                                                        |
+| `prettier --check <本轮 TS 文件> docs/development-log.md`                                                                                                                                                                           | 通过                                                                                                                                                        |
+| `prettier --check docs/research_agent_architecture_baseline.md doc/codex_phase4_personalized_ranking_mmr_prompt.md`                                                                                                                 | 两份文档有原有格式告警；用相同仓库 config/filepath 对 HEAD 架构原文确认同样不符合格式。遵循要求不整篇重排架构文档，用户需求原样保留；本轮新增架构段落已检查 |
+| `git diff --check`                                                                                                                                                                                                                  | 通过                                                                                                                                                        |
+| Zotero host / live OpenAlex / live embedding smoke                                                                                                                                                                                  | **not executed**；无宿主或真实 API 调用                                                                                                                     |
+
+新增测试验证：确定性特征/范围/权重、显式负偏好冲突、缺失特征、语义正确/非法/跨批不一致/超时/取消、零向量与极大 finite 坐标、词法与语义 MMR、排名/分数可复现、输入不变、32+4 adapter 批次、专用模型、索引对齐、工具暴露和 scope、真实 SQLite 画像 revision 2 下 fake 双路召回/novelty/排序/Top-K/输出。测试中观察到的类型错误来自临时配置缺少 Zotero 类型，已修正配置后通过，不修改生产类型来规避检查。
+
+#### Architecture Red-Line Review
+
+- CandidateDiscoveryService 原样保留，不评分；RankingService 不外部发现，Agent Tool 直接编排服务且传入完整池。
+- 排序域不依赖 Agent Runtime/UI/llmClient/conversationMemory，不新建 embedding preferences 或 client。
+- 无 LLM 排序，缺失 semantic/recency 重新归一化；负偏好独立乘数；feedback 不使用；base tie-break 和 MMR 确定性。
+- MMR 是单独模块，有 lexical fallback，推荐有 matchedTopicIds、分数与来源。
+- 无 CandidateSet、向量、RankingResult 持久化；无生产 ImpressionStore/FeedbackStore，无自动 import、Zotero 内容写入、RAG/PDF enrichment、UI/Scheduler/Multi-Agent。
+- 已有 ProfileStore 与首次画像构建是唯一沿用的持久状态路径；推荐不会自动刷新缓存画像或从当前 focus 修改长期偏好。
+
+#### Known Issues
+
+- Zotero host smoke：**not executed**。环境 PATH、常规系统位置没有 Zotero 可执行程序；research_profile_get / research_candidate_discover / research_recommend 未进行真实宿主、重启或 group UI 验证。Node SQLite/fake provider 集成不能替代 Zotero.DB 宿主验收。
+- Live OpenAlex / live embedding smoke：**not executed**。本轮采用 fake literature/fetch/embedding，无真实 API 验证；生产召回仍沿用 Phase 3 OpenAlex-only 及其元数据/DOI 限制。
+- 分数和 lambda 为未校准工程默认；词组包含、token 覆盖和 Jaccard 不处理同义词、词形和跨语言语义，semantic 可用时可改善但尚未测量真实质量/延迟。
+- 全无 index 的 embedding provider 按其响应顺序对齐（旧客户端合同）；无法从无索引向量反推远端语义错序。fake 测试验证了显式 index 排序与非法索引拒绝。
+- Profile 缓存手动刷新、无增量失效/跨设备身份；已有上游 pending 测试继续保留。架构基线与用户原始需求的已有 Prettier 格式告警保留：不整篇重写架构、不改写需求原文；代码与开发日志格式检查通过。
+
+#### Deferred Work
+
+Phase 5 统一实现推荐曝光持久化、positive/negative/save/skip append-only 反馈、曝光/候选/画像版本完整性、事务与幂等规则、ProfileUpdater 和新画像版本。真实宿主/live provider 质量与延迟测量后再决定向量/候选缓存；推荐 PDF/RAG、UI/Skill/Scheduler、离线 ranking evaluation 留到对应阶段。
+
+#### Next Recommended Step
+
+先在真实 Zotero 中验证已有画像、无 embedding、有效 embedding、取消以及 group library 下的 research_recommend；确认 scope、排序解释和结果显示。随后设计 Phase 5 Impression + Feedback + Profile Update 的完整闭环及事务边界。
 
 ### 2026-09-09 / recommendation-phase3-candidate-discovery
 
@@ -445,6 +618,12 @@ git diff --check
 
 ## Open Decisions
 
+- **Phase 4 score semantics（已决定）**：新生成特征/baseScore 为 `[0,1]`，finalScore 为可负 MMR 效用；feedback undefined；新增 preference/diversity 有界且保留旧 finite score 合同。
+- **Phase 4 missing features（已决定）**：缺 semantic/recency 移出分母；显式负偏好通过归一化 relevance 之后的 compatibility 乘数作用。
+- **Phase 4 embedding（已决定）**：既有专用 provider/config/client，32 条批次、30 秒截止、整体失败回退、请求内向量，不持久化 embedding。
+- **Phase 4 MMR（已决定）**：完整池、lambda=0.80、语义 cosine 优先、token Jaccard fallback、固定 base tie-break。
+- **Phase 4 recommendation persistence（已决定）**：本阶段无持久 recommendationId/ImpressionStore/FeedbackStore，Phase 5 统一引入曝光-反馈-画像闭环。
+
 - **Phase 3 External Candidate Identity（已决定）**：DOI/arXiv/OpenAlex/保守书目；歧义项使用 provenance occurrence ID。详见本轮 Identity / Dedup Policy。
 - **Phase 3 Novelty / Provenance（已决定）**：全 eligible library exact DOI/书目过滤；provenance 必需，派生 sources/seedPaperIds 并校验一致性；合并保留最早发现位置。
 - **Phase 3 Recall / Failure（已决定）**：5×12 query、4×8 seed、3 并发、80 池；支持 partial success、整体 cancellation；所有依赖失败明确抛错。
@@ -472,6 +651,13 @@ git diff --check
 - Phase 2 验收限制，优先级中：尚未在真实 Zotero.DB 宿主、插件重启和 group library UI 中 smoke test；Node SQLite seam 不能替代该验证。
 
 ## Handoff Notes
+
+### Phase 4 当前交接（2026-09-09）
+
+- 纯排序入口 `src/recommendation/ranking/rankingService.ts`，生产工具 `src/agent/tools/recommendation/researchRecommend.ts`，embedding 接口只在 Agent services 接到既有 llmClient。
+- 本地阶段提交/标签为 `feat(recommendation): add personalized ranking and mmr` / `phase-4`；远端未推送。阶段需求原样纳入，用户分析文件不纳入。
+- 参数和公式见本轮 Feature / Semantic / Base / Preference / MMR / Centralized Config；复现日志 `/tmp/phase4-{focused,unit,build,typecheck,test-types,lint,cycles}.log`，临时文件可丢失，以此记录为准。
+- 真实 Zotero/OpenAlex/embedding smoke 仍为 not executed。下一阶段先补宿主验收，再设计反馈闭环；不将当前分数当作概率或已校准科研结论。
 
 ### Phase 3 当前交接（2026-09-09）
 

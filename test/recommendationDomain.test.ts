@@ -13,6 +13,24 @@ import {
 } from "./helpers/recommendationFixtures";
 
 describe("recommendation domain contracts", function () {
+  it("validates new bounded score fields while retaining signed MMR and legacy contracts", function () {
+    for (const key of ["preference", "diversity"]) {
+      for (const value of [0, 1])
+        assertRecommendationCandidate({
+          ...makeCandidate(),
+          scores: { [key]: value, finalScore: -0.2 },
+        });
+      for (const value of [-0.1, 1.1, NaN, Infinity, null])
+        assert.throws(
+          () =>
+            assertRecommendationCandidate({
+              ...makeCandidate(),
+              scores: { [key]: value },
+            }),
+          TypeError,
+        );
+    }
+  });
   it("requires an impression profile identity as well as its revision", function () {
     assert.equal(makeImpression().profileId, "profile-1");
     for (const profileId of [undefined, null, "", " ", 1]) {

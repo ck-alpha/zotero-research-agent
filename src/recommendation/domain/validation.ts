@@ -153,6 +153,8 @@ const scoreShape = {
   graph: optional(finite),
   recency: optional(finite),
   feedback: optional(finite),
+  preference: optional(unitInterval),
+  diversity: optional(unitInterval),
   baseScore: optional(finite),
   finalScore: optional(finite),
 };

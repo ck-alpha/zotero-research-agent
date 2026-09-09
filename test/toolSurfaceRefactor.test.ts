@@ -233,6 +233,7 @@ describe("semantic tool surface", function () {
       "paper_read",
       "research_candidate_discover",
       "research_profile_get",
+      "research_recommend",
       "revert_changes",
       "run_command",
       "saved_search_update",

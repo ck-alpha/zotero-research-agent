@@ -1,3 +1,4 @@
+import { createResearchRecommendTool } from "./recommendation/researchRecommend";
 import { AgentToolRegistry } from "./registry";
 import { createResearchProfileGetTool } from "./recommendation/researchProfileGet";
 import { createResearchCandidateDiscoverTool } from "./recommendation/researchCandidateDiscover";
@@ -119,7 +120,7 @@ const LIBRARY_SEARCH_GUIDANCE: ToolGuidance = {
 const LITERATURE_SEARCH_GUIDANCE: ToolGuidance = {
   matches: matchesLiteratureSearchGuidance,
   instruction:
-    "When the request needs external scholarly evidence, call literature_search with workflow:'answer' by default, analyze the results, and answer with explicit source attribution. A mixed request may also use web_search for distinct general-web evidence. Use workflow:'review' only when the user wants to import/add papers to Zotero, save selected search results to a note, refine results inside the card, or review metadata changes. Do not use this tool for questions about the content of papers already in context (e.g. counting references, summarizing, explaining). Preserve the user's language by default." +
+    "When the request needs external scholarly evidence, call literature_search with workflow:'answer' by default, analyze the results, and answer with explicit source attribution. For personalized recommendations based on the user's library or interests, prefer research_recommend when available; it discovers and ranks internally. A mixed request may also use web_search for distinct general-web evidence. Use workflow:'review' only when the user wants to import/add papers to Zotero, save selected search results to a note, refine results inside the card, or review metadata changes. Do not use this tool for questions about the content of papers already in context (e.g. counting references, summarizing, explaining). Preserve the user's language by default." +
     "\n\nSource selection:" +
     "\n- recommendations, references, citations modes -> always use source:'openalex' (only OpenAlex supports these)." +
     "\n- search mode -> source:'openalex' (default, broadest coverage), source:'arxiv' (preprints, CS/ML/physics), or source:'europepmc' (biomedical/life sciences)." +
@@ -678,6 +679,18 @@ export function createBuiltInToolRegistry(
   );
   registry.register(
     createResearchCandidateDiscoverTool(
+      createProductionProfileService(),
+      new IndexedResearchLibrarySource(libraryIndexService),
+      (context) =>
+        new AgentLiteratureDiscoverySource(
+          new LiteratureSearchService(deps.zoteroGateway),
+          context,
+        ),
+    ),
+  );
+
+  registry.register(
+    createResearchRecommendTool(
       createProductionProfileService(),
       new IndexedResearchLibrarySource(libraryIndexService),
       (context) =>
