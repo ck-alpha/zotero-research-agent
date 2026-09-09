@@ -1,3 +1,4 @@
+import { AgentRecommendationEvidenceSource } from "../services/recommendationEvidenceSource";
 import { createRecommendationFeedbackTool } from "./recommendation/recommendationFeedback";
 import { RecommendationFeedbackService } from "../../recommendation/feedback/service";
 import {
@@ -714,6 +715,12 @@ export function createBuiltInToolRegistry(
           new LiteratureSearchService(deps.zoteroGateway),
           context,
         ),
+      {
+        evidenceSource: new AgentRecommendationEvidenceSource(
+          deps.zoteroGateway,
+          deps.pdfService,
+        ),
+      },
     ),
   );
 

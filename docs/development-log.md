@@ -5,9 +5,9 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-5`；历史 `phase-1` / `phase-2` / `phase-3` / `phase-4` 保留。阶段实现提交通过 `git rev-parse phase-5^{commit}` 查询，交付目标仅个人 origin/main 与 phase-5。
+- Phase checkpoint: `phase-6`；历史 phase-1 至 phase-5 保留。阶段实现提交通过 `git rev-parse phase-6^{commit}` 查询，交付目标仅个人 origin/main 与 phase-6。
 - Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Phase 5 起点为其后远端交付日志提交 5fa52194；不移动既有阶段标签。
-- Current phase: Phase 5 — Impression + Feedback + Profile Learning Loop（真实宿主/live smoke 未执行）。
+- Current phase: Phase 6 — Evidence-grounded Recommendation（真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
 - Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
 - 实际架构基线位于 [docs/research_agent_architecture_baseline.md](research_agent_architecture_baseline.md)，本阶段要求位于 [doc/codex_phase5_feedback_learning_loop_prompt.md](../doc/codex_phase5_feedback_learning_loop_prompt.md)。架构基线在 Phase 1 实现后由用户移至 `docs/`；本交接文档使用要求的 `docs/development-log.md` 路径。
@@ -30,7 +30,7 @@
 - Phase 4 链路：完整 Candidate Pool → Feature Computation → 可用权重归一化 Base Score → Base Sort → MMR → RecommendedPaper[] → 插件 Agent。
 - Profile Memory / Candidate Query Recall / Seed Recall / Merge-Dedup / Novelty Filter：已实现并保持既有边界。
 - Production ImpressionStore / Production FeedbackStore / RecommendationImpression persistence / Feedback append-only events / Feedback replay / Feedback-aware Profile update / recommendation_feedback：**implemented**。
-- Recommendation Evidence/RAG / recommendation UI / Scheduler-Digest / automatic Zotero import from feedback：**NOT implemented**。
+- Recommendation Evidence：已实现有界只读检索、确定性证据排序与理由；recommendation UI / Scheduler-Digest / automatic Zotero import from feedback：**NOT implemented**。
 - 曝光和反馈已持久化；无向量/CandidateSet 持久化，推荐 UI / Scheduler / Skill / Action、跨设备同步尚未实现。
 
 | 后端                                                    | 当前支持状态                                                                                                                     |
@@ -43,6 +43,61 @@
 | MCP / public tool catalog                               | 未暴露；沿用 `localAgentOnly` 过滤                                                                                               |
 
 ## Change History
+
+### 2026-09-09 / recommendation-phase6-evidence-grounded
+
+#### Goal / Git Baseline
+
+完成 Ranked Top-K → 可追溯证据 → 有依据的推荐理由，保持 Profile / Candidate / Ranking / Feedback 职责。
+
+- 起点：`4d9b59c421f23b61a79d4d94c1577fe696117154`；`git fetch origin` 后 HEAD 与 origin/main 一致，tracked tree 干净。
+- 阶段提交：`feat(recommendation): add grounded recommendation evidence`；annotated tag：`phase-6`。本条在实现提交中以标签引用自身；远端交付结果另行记录，不改写旧标签。
+- 仅纳入实现、测试、原样第六阶段需求、架构基线及本日志。`doc/analysis/` 和独立中文分析报告保持原样，不纳入提交。
+
+#### Files / What Changed
+
+- `src/recommendation/evidence/{contracts,evidenceRetriever,evidenceRanker,evidenceFormatter,evidenceService}.ts`：只读不可变合同、运行时 guards、确定性检索/排序/解释及错误降级。
+- `src/agent/services/recommendationEvidenceSource.ts`：关联 library/item scope 验证，复用 ZoteroGateway 笔记读取和 PdfService 缓存。`pdfService.ts` 仅增加现有缓存只读访问，不启动提取。
+- `src/agent/tools/recommendation/researchRecommend.ts` 与 tools/index：Top-K 后调用 evidence service，逐篇返回 evidence/reason/warnings，聚合警告；Agent guidance 限制只引用已有支持。曝光仍保存 Phase 5 原始候选、版本、分数和主题快照，不保存证据正文。
+- `test/recommendationEvidence.test.ts` 新增 10 项；推荐 Tool SQLite 集成测试扩展引用映射、上限、reason 与曝光兼容断言。
+
+#### Architecture / Limits / LLM Boundary
+
+- 排序解释严格分离：证据不重新选择候选、不修改分数，只读取排序后的候选及关联画像/库内材料。
+- metadata/tag/collection 来自当前 snapshot；notes 来自 Gateway；abstract 来自已存库投影或已发现候选；paper_content 仅来自现有 PDF 缓存。库内片段只说明兴趣背景，候选摘要才是外部新论文的直接支持。不从标题、搜索 query 或库内种子正文推断新论文结论。
+- 合同字段：evidenceId/candidateId/sourceType/reference/snippet/confidence/createdAt；sourceType 四值枚举、有限 `[0,1]` confidence、非空且限长字符串、非负整数时间，拒绝额外字段。reason 的主题来自画像与 candidate 匹配 ID，并检查摘要片段；evidenceRefs 必须在当前返回数组内解析。
+- score = 0.4 topicMatch + 0.3 sourceQuality + 0.2 freshness + 0.1 completeness，6 位精度，reference/ID 稳定平局顺序；未知来源时间无 freshness 奖励。createdAt 是读取时间；confidence 不是校准概率。
+- 每篇最多 4 条证据，snippet ≤480、summary ≤1000、JSON evidence+reason ≤6000 字符；Top-K ≤20，新增总解释上限 120000 字符。每候选关联最多 3 篇、每扩展来源最多 4 条、单条扫描 ≤12000 字符。单来源 1500ms、一次 Top-K 共享扩展读取 5000ms 预算；现有同步宿主调用不支持抢占。
+- 完全无 LLM 调用，确定性模板就是无模型 fallback；无需 API key 或实时服务。不发送全库/无关论文/聊天历史；Agent 只能转述结构化支持，不能选择、重排、发明引用或兴趣。片段作为数据，不当作指令。
+- 缺支持：成功返回推荐，但 reason confidence=0、空主题和引用、`evidence_unavailable`；部分失败/超时 `evidence_partial_failure`，保留其他可用证据；取消传播，不吞掉为成功。
+
+#### Tests
+
+使用既有 Node v24.20.0 工具链，无安装/升级依赖；全部离线确定性测试，无真实 API/model。
+
+- `npm run typecheck`：通过。
+- recommendation 专项：202 passing（2s）。
+- `npm run test:unit`：4433 passing（40s）、1 pending；相对 Phase 5 新增 10 passing，无新增失败。
+- `npm run build`：通过，含插件打包与内置 typecheck。
+- `npm run check:cycles`：通过，0 runtime / 0 static allowlisted。
+- 修改范围 ESLint：通过；新增测试额外按项目 Zotero + Node + Mocha 类型环境编译：通过。
+- 修改范围源码/测试 Prettier 与 `git diff --check`：通过。
+
+测试覆盖：四来源合同、非法值/置信度/来源/超长、来源映射、只读缓存、跨库拒绝、部分失败/超时、取消、确定性排序/分数/不可变性、原文窗口、JSON 转义后上限、缺失支持/禁止标题推断、A 强于 B 的完整排名后证据夹具、Tool 引用完整性和 Phase 5 曝光兼容。
+
+开发中修复了测试夹具的 rank 字段/seed provenance 不一致及超时默认参数字面量类型问题；早期独立测试编译命令缺少 Zotero/Mocha 类型，改为继承项目配置并显式添加测试类型后通过。初次全量为 4432 passing / 1 pending / 1 failing（新夹具）；最终结果以上为准。
+
+#### Known Issues / Red-Line Review
+
+- 未执行真实 Zotero 宿主、插件重启、live-agent 或 workflow smoke；Node mock/SQLite 不替代宿主验收。
+- 仍有既存 1 pending；构建环境已有 NODE_TLS_REJECT_UNAUTHORIZED=0，未设置或修改该值。
+- 解释采用保守词汇匹配，不声称验证论文结论；摘要缺失/同义词/截取窗口未包含支持时明确不足。库内易变笔记和缓存不做逐字历史归档，曝光可复现候选摘要/排序/反馈关联，不能保证历史库证据原文重放。
+- 无 Zotero 自动导入、UI、Scheduler、向量数据库、新 PDF 管线、多 Agent、学习排序、Chat RAG 重构或无依据生成。
+
+#### Deferred Work / Next Recommended Step
+
+后续 Phase 7：推荐与 Agent workflow 评测、延迟/覆盖率/消融及宿主验收。Phase 8 Optional：UI/Digest/Scheduler、证据历史与持久缓存等能力需另定范围。
+
 
 ### 2026-09-09 / recommendation-phase5-feedback-learning-loop
 

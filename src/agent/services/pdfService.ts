@@ -45,6 +45,21 @@ function canInspectZoteroItems(): boolean {
 }
 
 export class PdfService {
+  /** Read-only access: never starts extraction or populates the cache. */
+  getCachedRecommendationContent(
+    item: Zotero.Item,
+  ): { attachmentId: number; chunks: string[] } | undefined {
+    for (const id of (item.getAttachments?.() ?? []).slice(0, 4)) {
+      const cached = pdfTextCache.get(id);
+      if (cached?.chunks.length)
+        return {
+          attachmentId: id,
+          chunks: cached.chunks.slice(0, 4).map((text) => text.slice(0, 12000)),
+        };
+    }
+    return undefined;
+  }
+
   async ensurePaperContext(
     paperContext: PaperContextRef,
   ): Promise<PdfContext | undefined> {

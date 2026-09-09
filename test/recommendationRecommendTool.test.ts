@@ -1,3 +1,4 @@
+import type { EvidenceResult } from "../src/recommendation/evidence/contracts";
 import { SqliteImpressionStore } from "../src/recommendation/feedback/stores";
 import { assert } from "chai";
 import { rejects } from "node:assert/strict";
@@ -209,7 +210,7 @@ describe("research_recommend tool and no-network SQLite integration", function (
               papers: [
                 {
                   title: "Agents systems",
-                  abstract: "architecture ".repeat(80),
+                  abstract: "Agents architecture ".repeat(80),
                   doi: "10.1234/a",
                   authors: ["Author"],
                   year: 2026,
@@ -217,7 +218,7 @@ describe("research_recommend tool and no-network SQLite integration", function (
                 },
                 {
                   title: "Agents systems",
-                  abstract: "architecture ".repeat(80),
+                  abstract: "Agents architecture ".repeat(80),
                   doi: "10.1234/b",
                   authors: ["Author"],
                   year: 2026,
@@ -273,16 +274,18 @@ describe("research_recommend tool and no-network SQLite integration", function (
           profileVersion: number;
           generatedAt: number;
           recommendationCount: number;
-          recommendations: Array<{
-            rank: number;
-            candidateId: string;
-            title: string;
-            abstract?: string;
-            matchedTopics: Array<{ id: string; label: string }>;
-            scores: CandidateScores;
-            provenance: unknown[];
-            seedPaperIds?: string[];
-          }>;
+          recommendations: Array<
+            EvidenceResult & {
+              rank: number;
+              candidateId: string;
+              title: string;
+              abstract?: string;
+              matchedTopics: Array<{ id: string; label: string }>;
+              scores: CandidateScores;
+              provenance: unknown[];
+              seedPaperIds?: string[];
+            }
+          >;
           discoveryDiagnostics: {
             finalCandidateCount: number;
             existingLibraryExcluded: number;
@@ -314,6 +317,25 @@ describe("research_recommend tool and no-network SQLite integration", function (
         assert.deepEqual(first.matchedTopics, [
           { id: "agents", label: "Agents" },
         ]);
+        assert.isNotEmpty(first.evidence);
+        assert.isNotEmpty(first.reason.evidenceRefs);
+        assert.deepEqual(first.reason.matchedTopics, ["Agents"]);
+        for (const paper of result.recommendations) {
+          assert.isAtMost(paper.evidence.length, 4);
+          assert.isAtMost(
+            JSON.stringify({ evidence: paper.evidence, reason: paper.reason })
+              .length,
+            6000,
+          );
+          assert.isTrue(
+            paper.evidence.every((e) => e.candidateId === paper.candidateId),
+          );
+          assert.isTrue(
+            paper.reason.evidenceRefs.every((ref) =>
+              paper.evidence.some((e) => e.evidenceId === ref),
+            ),
+          );
+        }
         assert.equal(first.scores.graph, 1);
         assert.equal(first.scores.recency, 1);
         assert.lengthOf(first.provenance, 1);
@@ -337,6 +359,10 @@ describe("research_recommend tool and no-network SQLite integration", function (
           impression!.candidates.map((p) => p.provenance),
           result.recommendations.map((p) => p.provenance),
         );
+        for (const paper of impression!.candidates) {
+          assert.notProperty(paper, "reason");
+          assert.notProperty(paper, "warnings");
+        }
         assert.notProperty(result, "profile");
         assert.notProperty(result, "vectors");
         for (const p of result.recommendations)

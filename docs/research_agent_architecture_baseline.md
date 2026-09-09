@@ -1172,16 +1172,20 @@ candidate Tool 用于发现池检查，通用学术检索继续使用 literature
 
 ---
 
-## Phase 6 — Evidence-grounded Agent Workflow
+## Phase 6 — Evidence-grounded Recommendation（已实现）
 
-实现：
+`Candidate → Ranking / MMR → Top-K → Evidence Retrieval → Evidence Ranking → Grounded Explanation`。
 
-- research-intelligence Skill；
-- evidence enrichment；
-- recommendation reason features；
-- Agent synthesis；
-- 必要时增加 research_digest Action；
-- 少量 UI / review card。
+- 独立领域模块 `src/recommendation/evidence/`，不依赖 Agent、UI、模型或存储。Tool 在排序后逐项调用，证据不改变 rank/score，不为全候选池检索。
+- 不可变 `RecommendationEvidence`：evidenceId、candidateId、sourceType、reference、snippet、confidence、createdAt。运行时校验字段、来源枚举、非空引用、有限 `[0,1]` 分数、非负整数时间及长度。createdAt 是读取快照时间，不冒充来源时间。
+- 来源：已有关联种子/画像 paper 引用对应的 LibraryIndex 标签、集合路径和摘要；Agent adapter 经 library/item scope 校验读取 ZoteroGateway notes、PdfService 现有缓存。缓存未命中不触发提取、下载或索引。只保留与匹配主题有词汇关联的库内片段。
+- 外部候选摘要引用 `candidate:<encoded candidateId>#abstract` 可回溯到曝光内的候选摘要和 provider provenance；库内引用定位到 item 字段、note ID、attachment/chunk。库内内容仅作兴趣背景，不冒充外部候选的研究发现。
+- Evidence score = 0.4 topic match + 0.3 source quality + 0.2 freshness + 0.1 completeness；常量集中、固定精度、reference/ID 打破平局。只有有真实修改时间的 metadata 参与 freshness；未知时间为零。分数不是事实正确率或校准概率。
+- 每篇最多 4 条、片段 480 字符、summary 1000 字符，序列化 evidence + reason 合计最多 6000 字符；沿用 Tool Top-K ≤20，新增解释总量最多 120000 字符。最多关联 3 篇库内论文，每种扩展来源最多 4 条，每条扫描 12000 字符；单读取 1500ms，全次 Top-K 扩展来源共用 5000ms 预算。
+- `RecommendationReason` 返回 summary、matchedTopics、evidenceRefs、confidence；主题只从本次画像与排序匹配 ID 取交集，并要求候选摘要片段确有该词汇主题。引用必须存在于同一结果。优先保留直接摘要，不能仅凭标题、召回 query 或种子论文解释候选。
+- 不调用 LLM；确定性模板即无模型 fallback，不发送全库/聊天历史。Agent 只能转述已供证据，不选择/重排候选，不发明引用、兴趣或结论；源片段是数据而非指令。
+- 无支持时保持推荐成功，reason confidence=0、空主题/引用、`evidence_unavailable`；局部读取失败/超时给 `evidence_partial_failure`，取消继续传播。证据正文不进入 ImpressionStore，Phase 5 原始候选/画像版本/主题快照维持反馈完整性；库内易变证据的逐字历史重放不在本阶段保证范围。
+- deterministic A/B、领域校验、来源/部分失败/取消/上限、Tool 映射与曝光兼容均有无网络测试。没有新增 UI、Skill、Digest Action、Scheduler、向量库、PDF pipeline、自动导入或多 Agent。
 
 ---
 
