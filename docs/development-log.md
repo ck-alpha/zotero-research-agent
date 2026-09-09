@@ -5,8 +5,8 @@
 - Upstream commit: `5be02f51a9bdf9b143439c95eed07bd62a34cb68`（与架构基线一致）。
 - Current branch: `main`；阶段提交按下方 Git 交接约定管理。
 - Personal repository: `https://github.com/ck-alpha/zotero-research-agent`（私有；GitHub 仓库名称变更不修改插件名称或 addon ID）。
-- Phase checkpoint: `phase-4`，对应 Personalized Ranking + MMR 本地阶段提交；历史 `phase-1` / `phase-2` / `phase-3` 保留；本轮未推送远端。
-- Current HEAD / Phase 4 commit：由带注释标签 `phase-4` 标识，可用 `git rev-parse phase-4^{commit}` 获取完整哈希；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。提交内不记录自身哈希，避免自引用导致哈希失效。
+- Phase checkpoint: `phase-4`，对应 Personalized Ranking + MMR 实现提交；历史 `phase-1` / `phase-2` / `phase-3` 保留；本轮按用户授权向个人 `origin/main` 和 `origin/phase-4` 交付。
+- Phase 4 implementation commit：`743e0b813fa4aad8bb730f4fa35ab215c3388211`，由带注释标签 `phase-4` 标识；阶段起点为 `474e2b73c419ddfdd10a786a3726b942585ed034`（Phase 3）。Current HEAD 在实现提交后追加远端交付日志提交；不移动既有阶段标签。
 - Current phase: Phase 4 — Personalized Ranking + MMR（本地实现与自动化验收，真实宿主/live smoke 未执行）。
 - Last verified date: 2026-09-09 (UTC)。
 - Phase 4 修改前 working tree：用户已有未跟踪 `doc/analysis/`、`doc/codex_phase4_personalized_ranking_mmr_prompt.md`、`doc/仓库技术与产品分析报告_2026-09-07.md`；没有已跟踪文件修改。
@@ -53,7 +53,9 @@
 
 - Branch：`main`；starting commit：`474e2b73c419ddfdd10a786a3726b942585ed034`（`phase-3`）；upstream 固定基线不变。
 - 本阶段本地检查点使用 `feat(recommendation): add personalized ranking and mmr` 与带注释标签 `phase-4`；ending commit 由 `phase-4^{commit}` 查询，提交内不记录自身哈希。
-- 本轮只进行开发、验证和本地阶段提交，未执行远端推送。个人 origin 与 upstream 保持原配置，历史阶段标签不变。
+- 初次交付完成开发、验证和本地阶段提交。2026-09-09 用户明确要求“请进行远程仓库的提交和推送”，本次追加本条交付日志提交，并将 `main` 与已有带注释标签 `phase-4` 推送到个人 `origin`；不改写实现提交、不移动标签、不强推、不推送 upstream。
+- 推送前核验：远端 `main` 为 Phase 3 commit `474e2b73c419ddfdd10a786a3726b942585ed034`，不存在远端 `phase-4`，可正常快进。推送后再次核对远端 main 与本地 HEAD、远端 phase-4 与实现 commit。
+- 本次没有代码变更，沿用本阶段已完成的 4394 passing / 1 pending、248 项专项回归、typecheck/build 等结果；仅对更新后的日志执行格式与 diff 检查。
 - 起始已存在未跟踪 `doc/analysis/`、阶段需求和独立中文分析报告。阶段需求原样纳入阶段交付；独立分析目录/报告不修改、不纳入提交。依赖、构建产物和凭据不纳入提交。
 
 #### Files Changed
@@ -655,7 +657,7 @@ git diff --check
 ### Phase 4 当前交接（2026-09-09）
 
 - 纯排序入口 `src/recommendation/ranking/rankingService.ts`，生产工具 `src/agent/tools/recommendation/researchRecommend.ts`，embedding 接口只在 Agent services 接到既有 llmClient。
-- 本地阶段提交/标签为 `feat(recommendation): add personalized ranking and mmr` / `phase-4`；远端未推送。阶段需求原样纳入，用户分析文件不纳入。
+- 阶段实现提交/标签为 `743e0b81` / `phase-4`；用户已授权本轮提交和远端推送。另追加交付日志提交到 main，保留 phase-4 指向已验收的实现提交；目标仅为个人 origin。阶段需求原样纳入，用户分析文件不纳入。
 - 参数和公式见本轮 Feature / Semantic / Base / Preference / MMR / Centralized Config；复现日志 `/tmp/phase4-{focused,unit,build,typecheck,test-types,lint,cycles}.log`，临时文件可丢失，以此记录为准。
 - 真实 Zotero/OpenAlex/embedding smoke 仍为 not executed。下一阶段先补宿主验收，再设计反馈闭环；不将当前分数当作概率或已校准科研结论。
 
