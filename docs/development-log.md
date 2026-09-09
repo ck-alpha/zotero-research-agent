@@ -51,7 +51,7 @@
 完成 Ranked Top-K → 可追溯证据 → 有依据的推荐理由，保持 Profile / Candidate / Ranking / Feedback 职责。
 
 - 起点：`4d9b59c421f23b61a79d4d94c1577fe696117154`；`git fetch origin` 后 HEAD 与 origin/main 一致，tracked tree 干净。
-- 阶段提交：`feat(recommendation): add grounded recommendation evidence`；annotated tag：`phase-6`。本条在实现提交中以标签引用自身；远端交付结果另行记录，不改写旧标签。
+- 阶段提交：`b10402589c72682ae1c7deea457d68e34e9414c0`，`feat(recommendation): add grounded recommendation evidence`；annotated tag：`phase-6`。已成功推送 origin/main 和 phase-6，并用 git ls-remote 核对分支及标签解引用均指向该实现。随后追加交付日志提交，phase-6 保持不动；无强推。
 - 仅纳入实现、测试、原样第六阶段需求、架构基线及本日志。`doc/analysis/` 和独立中文分析报告保持原样，不纳入提交。
 
 #### Files / What Changed
@@ -847,6 +847,14 @@ git diff --check
 - Phase 2 验收限制，优先级中：尚未在真实 Zotero.DB 宿主、插件重启和 group library UI 中 smoke test；Node SQLite seam 不能替代该验证。
 
 ## Handoff Notes
+
+### Phase 6 当前交接（2026-09-09）
+
+- 实现提交 `b1040258` / annotated `phase-6` 已推送并核对远端；后续交付日志提交不移动阶段标签。
+- 领域入口 `src/recommendation/evidence/evidenceService.ts`；集成在 researchRecommend Top-K 后，生产 adapter 仅复用既有 notes/PDF cache。
+- 全量 4433 passing / 1 pending，recommendation 专项 202 passing；typecheck、build、cycles、修改范围 lint/format、附加测试类型检查和 diff 检查通过。
+- 证据摘要与库内兴趣背景严格区分；缺少候选摘要支持返回 evidence_unavailable，不能用标题补理由。曝光不存易变笔记/缓存正文，反馈持久链路不变。
+- 真实 Zotero 宿主/live/workflow 验证未执行；下一步 Phase 7 评测及宿主验收。用户分析材料保持未跟踪，未加入阶段提交。
 
 ### Phase 5 当前交接（2026-09-09）
 
