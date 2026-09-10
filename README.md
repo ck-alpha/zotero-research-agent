@@ -1,852 +1,359 @@
-# llm-for-zotero: A Research Agent System for your Zotero Library
+# Zotero Research Intelligence Agent
 
-[![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
-[![zotero target version](https://img.shields.io/badge/Zotero-8-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
-[![zotero target version](https://img.shields.io/badge/Zotero-9-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
-[![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
-[![Latest release](https://img.shields.io/github/v/release/yilewang/llm-for-zotero?style=flat-square)](https://github.com/yilewang/llm-for-zotero/releases)
-[![GitHub Stars](https://img.shields.io/github/stars/yilewang/llm-for-zotero?style=flat-square)](https://github.com/yilewang/llm-for-zotero/stargazers)
-[![GitHub Downloads](https://img.shields.io/github/downloads/yilewang/llm-for-zotero/total?style=flat-square)](https://github.com/yilewang/llm-for-zotero/releases)
-[![buymeacoffee](https://img.shields.io/badge/Support-Buy%20Me%20A%20Coffee-FF813F?style=flat-square&logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/yat.lok)
+A personalized research assistant that builds a long-term research profile,
+discovers relevant papers, ranks them with explainable signals, and revises
+preferences through explicit feedback.
 
-<p align="center">
-  <img src="./assets/label.png" alt="LLM for Zotero logo: a brain icon merged with the Zotero shield" width="512" />
-</p>
+Built on [Yile Wang’s llm-for-zotero](https://github.com/yilewang/llm-for-zotero).
+This fork adds a Research Intelligence layer to the existing Zotero Agent and
+RAG infrastructure. **Phase 8 is implemented; real Zotero host and live model
+validation remain pending.**
 
-**llm-for-zotero** brings Large Language Models into the Zotero reader, so
-you can ask questions, summarize papers, inspect figures, compare sources,
-and save notes without leaving your library. It works with standard API
-providers, local OpenAI-compatible models, WebChat, Codex App-Server,
-and Claude Code.
+[Demo](docs/research-intelligence-demo.md) ·
+[Evaluation](docs/research-intelligence-workflow-eval.md) ·
+[Development log](docs/development-log.md) ·
+[Installation](#installation--existing-usage) ·
+[AGPL-3.0-or-later](LICENSE)
 
-Documentation:
+## What It Does
 
-- [English](https://yilewang.github.io/llm-for-zotero)
-- [Chinese](https://yilewang.github.io/llm-for-zotero/zh/)
+Ask **“Based on my research interests, what should I read next?”** The system
+uses your Zotero library to build an interest profile, discover external papers,
+and return a ranked reading list with traceable evidence. Explicit feedback
+revises the profile used by future recommendations.
 
-<p align="center">
-  <img src="./assets/demo.png" alt="Screenshot of the llm-for-zotero sidebar inside the Zotero PDF reader" width="1024" />
-</p>
+```text
+User
+ ↓
+Research Intelligence Skill
+ ↓
+Personalized Recommendation Workflow
+ ↓
+Grounded Research Digest
+```
 
-<p align="center">
-  <img src="./assets/demo2.png" alt="Screenshot of the llm-for-zotero sidebar inside the Zotero PDF reader" width="1024" />
-</p>
+The engineering focus is a persistent profile → recommendation → feedback loop,
+with deterministic ranking, evidence boundaries and testable Agent contracts.
+Research Intelligence currently runs in **plugin Agent mode**.
 
-## Personalized Research Intelligence
-
-This project builds a personalized research-intelligence layer on top of the
-existing **llm-for-zotero** Agent/RAG/Zotero infrastructure. It reuses Zotero
-integration, Agent Runtime and Tool Registry, literature search adapters, RAG/PDF
-services, provider abstraction, and confirmation/change-journal infrastructure.
-The added layer provides a long-term ResearchProfile, multi-route candidate
-discovery, deterministic ranking and MMR diversity, grounded recommendation
-evidence, feedback-driven profile updates, offline evaluation, and the built-in
-`research-intelligence` Agent Skill.
+## Architecture Overview
 
 ```mermaid
 flowchart TD
-    A[Zotero Library] --> B[ResearchProfile]
-    B --> C[Query + Seed Recall]
-    C --> D[Candidate Pool]
-    D --> E[Personalized Rank + MMR]
-    E --> F[Grounded Evidence]
-    F --> G[Recommendation]
-    G --> H[Explicit User Feedback]
+    A[Zotero Library] --> B[Research Profile]
+    B --> C[Candidate Discovery]
+    C --> D[Personalized Ranking + MMR]
+    D --> E[Evidence Grounding]
+    E --> F[Recommendation + Saved Impression]
+    F --> G[Explicit User Feedback]
+    G --> H[Profile Revision]
     H --> B
 ```
 
-In plugin Agent mode, ask naturally:
-
-- “根据我的研究兴趣推荐 5 篇值得读的论文。”
-- “为什么第 1 篇适合我？”
-- “第 2 篇我很喜欢，第 4 篇不感兴趣。”
-- “更新我的研究画像后再推荐一次。”
-- “Give me a personalized research digest.”
-
-A digest is an on-demand presentation of current recommendations. Feedback uses
-existing confirmation, and “save” records preference only; adding a paper to
-Zotero is a separate confirmed import. This capability is available in plugin
-Agent mode; recommendation tools are not exposed to the external backends.
-Offline routing and workflow contracts are tested; live model/provider and real
-Zotero host validation remain pending. See the [demo](docs/research-intelligence-demo.md)
-and [workflow evaluation](docs/research-intelligence-workflow-eval.md).
-
-## Table of Contents
-
-- [At a Glance](#at-a-glance)
-- [Quick Start](#quick-start)
-- [What's New](#whats-new)
-- [Configuration](#configuration)
-- [Demos](#demos)
-- [File-Based Notes](#file-based-notes)
-- [Agent Mode](#agent-mode-beta)
-- [Skills](#skills)
-- [General Web Search](#general-web-search)
-- [WebChat Setup](#webchat-setup-chatgpt-web-sync)
-- [Codex Setup](#codex-setup-chatgpt-plus-subscribers)
-- [Claude Code Setup](#claude-code-setup-experimental)
-- [MinerU PDF Parsing](#mineru-pdf-parsing)
-- [Privacy and Data Flow](#privacy-and-data-flow)
-- [Roadmap](#roadmap)
-- [FAQ](#faq)
-- [Contributing](#contributing)
-
-## At a Glance
-
-- Chat with the current PDF, selected text, figures, screenshots, and uploaded
-  documents directly inside Zotero.
-- Get grounded answers with citations that jump back to the source passage.
-- Compare multiple open papers or add external files as extra context.
-- Save answers, full conversations, and research notes to Zotero notes or local
-  Markdown folders such as Obsidian and Logseq.
-- Enable Agent Mode for library-wide read, search, tagging, metadata, import,
-  note-editing, and organization workflows.
-- Search the current public web and read relevant pages with Tavily, with source links attached to the answer.
-- Use your preferred backend: API keys, local models, ChatGPT WebChat, Codex App
-  Server, or Claude Code.
-
-<a id="installation"></a>
-<a id="usage-guide"></a>
-
-## What's New
-
-- **Codex App Server** is the recommended Codex path for ChatGPT Plus users.
-  It runs through the local `codex app-server` runtime and is configured from
-  the **Agent** tab.
-- **Claude Code Mode** runs Claude Code as a separate conversation system inside
-  Zotero through a companion local bridge. It is experimental and does not yet
-  support native Zotero API operations.
-- **Skills** let you customize how Agent Mode handles research workflows. The
-  plugin ships with 8 built-in skills and a portal for creating your own.
-- **General Web Search** lets the in-plugin Agent search the current public web with Tavily, read relevant pages, and attach source links to its answers.
-- **Standalone Window Mode** opens the assistant in a dedicated window with
-  paper chat, library chat, and conversation history.
-- **File-Based Notes** save Markdown notes to local folders, including Obsidian,
-  Logseq, or any plain Markdown directory.
-- **Cache-aware Agent Mode** preserves stable paper context, prior read
-  evidence, and coverage state across longer research turns, then compacts old
-  transcript history automatically when the context window gets crowded.
-- **Citation navigation** now keeps citation labels conservative until page
-  locations are verified, while quote-based citations can jump back to the
-  matching Zotero passage.
-- **MinerU PDF parsing** provides higher-fidelity extraction for tables,
-  equations, figures, and local `mineru-api` servers, with a richer file
-  manager for bulk parsing, cache repair, sync packages, tags, and parsing
-  filters.
-
-Thanks to [@jianghao-zhang](https://github.com/jianghao-zhang) and
-[@boltma](https://github.com/boltma) for major contributions to the Codex App
-Server, Claude Code, and file upload workflows.
-
-## Quick Start
-
-1. Download the latest `.xpi` file from the
-   [Releases page](https://github.com/yilewang/llm-for-zotero/releases).
-2. In Zotero, open `Tools` -> `Add-ons` -> gear icon ->
-   **Install Add-on From File**, then select the `.xpi`.
-3. Restart Zotero.
-4. Open `Preferences` -> `llm-for-zotero`, choose a provider, enter the base
-   URL, key, and model, then click **Test Connection**.
-5. Open a PDF in Zotero and click the LLM Assistant icon in the right-hand
-   toolbar.
-
-If you do not want to use a provider API key, start with
-[WebChat](#webchat-setup-chatgpt-web-sync) or
-[Codex App Server](#codex-setup-chatgpt-plus-subscribers).
-
-## Configuration
-
-Open `Preferences` -> `llm-for-zotero`.
-
-1. Select your **Provider**.
-2. Paste your **API Base URL**, **secret key**, and **model name**.
-3. Click **Test Connection**.
-
-<p align="center">
-  <img src="./assets/model_setting.gif" alt="Animation showing provider and model configuration" width="1024" />
-</p>
-
-The plugin supports multiple provider protocols, including `responses_api`,
-`openai_chat_compat`, `anthropic_messages`, and `gemini_native`.
-
-You can configure multiple providers and models for different tasks, such as a
-multimodal model for figures and a text model for summaries. The conversation
-panel also supports model-specific reasoning levels and hyperparameters such as
-`temperature` and `max_tokens_output`.
-
-<a id="features"></a>
-
-## Demos
-
-### Grounded Paper Chat
-
-On the first message, the model loads the current paper as context. Follow-up
-questions use focused retrieval from the same paper, keeping conversations fast
-and grounded.
-
-<p align="center">
-  <img src="./assets/citation_jump.gif" alt="Animation showing one-click jump from an AI citation to the paper source" width="1024" />
-</p>
-
-Click any generated citation to jump straight to the source passage in Zotero.
-
-### Summaries and Selected Text
-
-Summarize a full paper, focus on methodology or results, or select any paragraph
-and ask the model to explain it.
-
-<p align="center">
-  <img src="./assets/summarize.gif" alt="Animation showing an instant paper summary in the sidebar" width="1024" />
-</p>
-
-<p align="center">
-  <img src="./assets/text.gif" alt="Animation showing selected text being explained by the model" width="1024" />
-</p>
-
-The selected-text pop-up can add highlighted text to chat with one click. It can
-also be disabled in settings.
-
-### Figures and External Files
-
-Take screenshots of figures, attach up to 10 screenshots, or upload local files
-as additional context. Supported uploads include PDF, DOCX, PPTX, TXT, and Markdown.
-
-<p align="center">
-  <img src="./assets/screenshot.gif" alt="Animation showing screenshot-based figure interpretation" width="1024" />
-</p>
-
-<p align="center">
-  <img src="./assets/upload_files.gif" alt="Animation showing external file upload for additional context" width="1024" />
-</p>
-
-### Multi-Paper Comparison
-
-Open multiple papers in Zotero tabs and type `/` to cite another paper as
-additional context.
-
-<p align="center">
-  <img src="./assets/multi.gif" alt="Animation showing cross-paper comparison using the slash command" width="1024" />
-</p>
-
-### Notes, History, and Presets
-
-Save answers or selected text to Zotero notes, export full conversations in
-Markdown, and customize quick-action presets for repeated research tasks.
-
-<p align="center">
-  <img src="./assets/save_notes.gif" alt="Animation showing model answers being saved to Zotero notes" width="1024" />
-</p>
-
-<p align="center">
-  <img src="./assets/save_chat.gif" alt="Animation showing conversation export to Zotero notes with markdown" width="1024" />
-</p>
-
-<p align="center">
-  <img src="./assets/shortcuts.gif" alt="Animation showing custom quick-action preset configuration" width="1024" />
-</p>
-
-## File-Based Notes
-
-Beyond Zotero's built-in notes, the agent can save Markdown research notes to
-any local directory you choose. Point it at an
-[Obsidian](https://obsidian.md/) vault, a [Logseq](https://logseq.com/) graph,
-or a plain folder of `.md` files.
-
-Open `Preferences` -> `llm-for-zotero` and scroll to the **Notes Directory**
-section.
-
-<p align="center">
-  <img src="./assets/outside_notes.png" alt="Screenshot of the Notes Directory settings panel" width="512" />
-</p>
-
-| Setting                  | Description                                                          | Example              |
-| ------------------------ | -------------------------------------------------------------------- | -------------------- |
-| **Nickname**             | How you refer to this directory in chat                              | `Obsidian`, `Logseq` |
-| **Notes Directory Path** | Absolute path to the root directory where notes are saved            | `/Users/me/MyVault`  |
-| **Default Folder**       | Default subfolder for new notes                                      | `Logs`               |
-| **Attachments Folder**   | Folder for copied figures and images, relative to the directory root | `Logs/imgs`          |
-
-Ask the agent to write a note using the configured nickname, for example:
-_"Summarize this paper and save it to Obsidian."_ The agent gathers paper
-metadata, writes a Markdown note, adds YAML frontmatter, optionally copies
-figures from MinerU-parsed PDFs, and saves the note under the configured folder.
-
-Or if you want to keep notes inside Zotero, the agent can also write to internal item notes with the `write-note` skill. Just ask it to "save a note for this paper" without mentioning an external directory.
-
-### Zotero Notes vs. File-Based Notes (both generated by the plugin)
-
-<p align="center">
-  <img src="./assets/note2.jpeg" alt="Zotero internal note" width="512" />
-</p>
-
-<p align="center">
-  <img src="./assets/obsidian_example.png" alt="Example of a paper note rendered in Obsidian" width="512" />
-</p>
-
-Notes use [Pandoc citation syntax](https://pandoc.org/MANUAL.html#citations)
-such as `[@citekey]`, which works with Obsidian Zotero Integration, Pandoc
-plugins, and many Markdown readers.
-
-> Note templates and figure-embedding rules live in the `write-note` skill.
-> Open the **Standalone Window** -> **Skills** portal to edit them.
-
-## Agent Mode (beta)
-
-Agent Mode is disabled by default. Enable it in `Preferences`, then toggle
-`Agent (beta)` in the context bar.
-
-It can read and search your library, draft notes, update metadata or tags with
-confirmation, and undo recent write actions in the same session.
-
-When enabled, the LLM can act on your Zotero library with read tools, write
-tools, confirmation cards, and session undo.
-
-Long agent runs are cache-aware. The plugin keeps stable Zotero context and
-previously read evidence separate from the changing chat transcript, tracks which
-papers and passages have already been inspected, and automatically compacts old
-turns when the model context fills up. This lets follow-up questions reuse
-grounded evidence when it is still relevant, while still asking the agent to read
-again when the needed source or coverage layer is missing.
-
-| Tool area                | Examples                                                                                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Library and PDF reading  | Search items and collections, read metadata, read papers, search paper passages, render PDF pages, inspect attachments                            |
-| Scholarly discovery      | Search CrossRef and Semantic Scholar for metadata, recommendations, references, and citations                                                     |
-| General web research     | Search the current public web with Tavily, read relevant pages, and show source links with the answer                                             |
-| Library writes           | Apply tags, update metadata, move items, manage collections, manage attachments, merge duplicates, trash items, import identifiers or local files |
-| Notes                    | Edit the active Zotero note or create a new note in plain text, Markdown, or HTML                                                                 |
-| Filesystem and scripting | Read/write allowed local files, run analysis commands, or execute Zotero JavaScript with write confirmations                                      |
-| Safety                   | Undo the most recent write action in the conversation, with the last 10 entries kept per session                                                  |
-
-The design philosophy is simple: read tools are unrestricted; write tools stay
-reviewable and undoable.
-
-### Agent Mode Demos
-
-#### Multi-step workflow
-
-<p align="center">
-  <img src="./assets/agent/multi_steps.gif" alt="Animation showing multi-step agent workflow" width="512" />
-</p>
-
-#### Find related papers
-
-<p align="center">
-  <img src="./assets/agent/related_papers.gif" alt="Animation showing agent finding related papers in the library" width="1024" />
-</p>
-
-#### Apply tags
-
-<p align="center">
-  <img src="./assets/agent/apply_tags.gif" alt="Animation showing agent applying tags to a paper" width="1024" />
-</p>
-
-#### Write a note
-
-<p align="center">
-  <img src="./assets/agent/write_note.png" alt="Screenshot showing agent writing a note for a paper" width="1024" />
-</p>
-
-## Skills
-
-Skills customize Agent Mode behavior for recurring research workflows such as
-paper QA, evidence retrieval, figure analysis, paper comparison, literature
-reviews, note writing, and cited-reference import.
-
-<details>
-<summary>Built-in skills and custom skill setup</summary>
-
-<p align="center">
-  <img src="./assets/skills.png" alt="Screenshot of the Skills management portal" width="512" />
-</p>
-
-Skills are customizable guidance files that shape how Agent Mode approaches
-different types of requests. When your message matches a skill's trigger
-patterns, the skill's instructions are injected into the agent prompt.
-
-> Skills require **Agent Mode**. They have no effect in standard chat mode.
-
-Built-in skills:
-
-| Skill                    | What it guides the agent to do                                      |
-| ------------------------ | ------------------------------------------------------------------- |
-| `simple-paper-qa`        | Answer general questions about a paper efficiently                  |
-| `evidence-based-qa`      | Find specific methods, results, or evidence with targeted retrieval |
-| `analyze-figures`        | Interpret figures and tables using MinerU-extracted images          |
-| `compare-papers`         | Compare multiple papers using batched reads and focused retrieval   |
-| `library-analysis`       | Summarize or analyze your entire library without context overflow   |
-| `literature-review`      | Conduct a structured literature review                              |
-| `write-note`             | Write Zotero notes or Markdown notes in configured local folders    |
-| `import-cited-reference` | Import papers cited in the current PDF into Zotero                  |
-
-To create a custom skill, open the **Standalone Window**, click the **Skills**
-icon, choose **"+ New skill"**, edit the skill file, and save. Skills are stored
-as Markdown files in `{ZoteroDataDir}/llm-for-zotero/skills/`.
-
-</details>
-
-## General Web Search
-
-Agent Mode can search the current public web with [Tavily](https://www.tavily.com/) and read the most relevant returned pages when search-result snippets are not enough.
-Use it for current facts, official documentation, news, finance, product information, and other general-web evidence.
-Scholarly discovery remains separate: the agent uses CrossRef and Semantic Scholar for research literature, and it can combine both kinds of search when a question needs academic and general-web sources.
-
-To enable general web search:
-
-1. Get a Tavily API key from [app.tavily.com](https://app.tavily.com/).
-2. Open `Preferences` -> `llm-for-zotero` -> **Agent**.
-3. In **Tavily Web Search**, paste the API key and click **Test connection**.
-4. Enable Agent Mode and ask it to search or verify something online.
-
-There is no separate enable switch.
-The `web_search` and `web_read` tools become available to compatible in-plugin Agent conversations when a Tavily key is configured.
-They are not added to WebChat, Codex App Server, or Claude Code conversations, which use their own runtimes and tool sets.
-
-The agent chooses basic or advanced search and page-reading depth from the request, or follows an explicit request such as _"use advanced web search."_
-It can narrow searches by topic, date, or domain, and answers include clickable source indicators for the pages actually used.
-
-Basic search costs 1 Tavily credit and advanced search costs 2.
-Page extraction also consumes Tavily credits, and Tavily currently offers a free monthly allowance.
-The API key stays in local Zotero preferences, but search queries and requested URLs are sent to Tavily, so do not include credentials or sensitive private text in web queries.
-
-## Codex Setup (ChatGPT Plus Subscribers)
-
-If you have a ChatGPT Plus subscription, you can use Codex models in the plugin
-without a separate API key by signing in through the Codex CLI.
-
-New users should choose **Codex App Server** from the **Agent** tab. The older
-**Codex Auth (Legacy)** path remains available for existing users, but is
-planned for future deprecation after app-server validation.
-
-<details>
-<summary>Codex App Server setup and legacy Codex Auth</summary>
-
-<p align="center">
-  <img src="./assets/codex_claude.png" alt="Screenshot showing recommended Codex App Server configuration in plugin settings" width="512" />
-</p>
-
-### Codex App Server setup
-
-1. Install the Codex CLI:
-
-   ```bash
-   npm install -g @openai/codex
-   ```
-
-   On macOS, you can also use `brew install --cask codex`.
-   On Windows, you can also use `winget install OpenAI.Codex`; install Codex from PowerShell or Command Prompt rather than WSL, so Zotero MCP can use the Windows-local loopback connection.
-
-2. Log in:
-
-   ```bash
-   codex login
-   ```
-
-   Credentials are saved to `~/.codex/auth.json`.
-
-3. In Zotero, open `Preferences` -> `llm-for-zotero` -> **Agent** tab.
-4. Turn on **Enable Codex App Server integration**.
-5. Choose the default model and reasoning level.
-6. Click **Test connection**.
-7. In the chat header, click **Codex** to switch into the Codex conversation
-   system.
-
-`Codex App Server` and `Claude Code` are mutually exclusive runtime modes in the
-Agent tab. Disable one before enabling the other.
-
-### Codex Auth (Legacy)
-
-Existing users can keep the legacy direct backend configuration:
-
-- Open the **AI Providers** tab.
-- Choose **Auth Mode** -> `Codex Auth (Legacy)`.
-- Keep API URL `https://chatgpt.com/backend-api/codex/responses`.
-- Keep your Codex model name, for example `gpt-5.5`.
-
-Legacy notes:
-
-- Reads credentials from `~/.codex/auth.json` or `$CODEX_HOME/auth.json`.
-- Automatically attempts token refresh on 401 responses.
-- Embeddings are not supported in this legacy direct mode yet.
-- Local PDF/reference text grounding and screenshot/image inputs are supported.
-- The Responses `/files` upload plus `file_id` attachment flow is not supported
-  yet.
-
-</details>
-
-## Claude Code Setup (Experimental)
-
-Claude Code mode runs Claude Code as a separate conversation system inside
-Zotero. It reuses the sidebar and standalone-window UI, but has separate
-conversation history, scope state, model settings, permission semantics, slash
-commands, and project skills.
-
-> Claude Code mode currently does **not** support native Zotero API operations.
-> Use built-in [Agent Mode](#agent-mode-beta) for native library tools such as
-> reading item state, editing notes, tagging papers, updating metadata, or
-> importing items.
-
-<details>
-<summary>Claude Code prerequisites, bridge setup, and project assets</summary>
-
-Prerequisites:
-
-- A working Claude Code CLI installation. Follow Anthropic's official
-  [Claude Code installation](https://code.claude.com/docs/en/installation.md),
-  [quickstart](https://code.claude.com/docs/en/quickstart.md), and
-  [authentication](https://code.claude.com/docs/en/authentication.md) docs.
-- The `claude` command must be on `PATH` and authenticated.
-- Node.js and npm for the companion bridge adapter.
-
-### 1. Install and verify Claude Code
-
-Run:
-
-```bash
-claude
+A saved impression records the displayed candidates and profile version, so
+feedback can refer to a specific recommendation. Domain services live separately
+from Agent tools and the inherited UI/runtime. See the
+[architecture baseline](docs/research_agent_architecture_baseline.md).
+
+## Core Capabilities
+
+### 1. Long-term Research Profile
+
+Builds weighted research topics from Zotero library signals, including tags,
+collection paths and metadata, with bounded model-assisted topic extraction.
+Profiles and explicit preferences persist per library. Existing profiles are
+read from storage; an explicit refresh rebuilds them. Updates use
+**feedback-driven profile revision**, with deterministic scoring and versioning.
+
+### 2. Personalized Candidate Discovery
+
+Combines profile-derived queries with seed-paper recommendations through the
+existing OpenAlex integration. Candidates are merged, deduplicated and filtered
+against known library items; query/seed provenance stays attached. Bounded
+retrieval and partial-failure warnings make the discovery scope inspectable.
+This is a focused recommendation pipeline, not a complete academic search engine.
+
+### 3. Explainable Ranking
+
+| Signal             | Role                                                                         |
+| ------------------ | ---------------------------------------------------------------------------- |
+| Lexical relevance  | Matches candidate text to weighted interests and an optional focus           |
+| Semantic relevance | Uses optional embeddings; falls back when unavailable                        |
+| Graph signal       | Uses seed-recommendation provenance and provider rank as a proxy             |
+| Recency            | Weights publication age when available                                       |
+| Preference         | Applies explicit negative-topic compatibility and feedback-revised interests |
+| MMR diversity      | Balances relevance against similarity among selected papers                  |
+
+Ranking is deterministic for fixed inputs, vectors, configuration and time.
+MMR (maximal marginal relevance) uses semantic similarity when available and a
+lexical fallback otherwise. This is not a trained neural recommender; scores
+are selection diagnostics, not probabilities or measures of scientific quality.
+
+### 4. Evidence-Grounded Recommendations
+
+Recommendation results expose matched interests, evidence references, reasons
+and confidence limitations. Candidate abstracts support claims about the
+candidate; library notes and cached PDF passages provide interest context.
+When evidence is insufficient, the pipeline returns `evidence_unavailable` or
+zero confidence, and the Skill instructs the model to disclose that limitation.
+Titles and ranking scores cannot substitute for evidence of research findings.
+Final live-model adherence to these instructions has not yet been validated.
+
+### 5. Feedback Loop
+
+```text
+“I like paper 2”
+ ↓
+recommendation_feedback → confirmation
+ ↓
+Append-only feedback event → deterministic replay → profile revision
+ ↓
+Future recommendations
 ```
 
-Complete any login or authentication prompts before continuing.
+Positive, negative, save and skip feedback use deterministic event-based updates.
+There is no online model training. A successful profile revision need not change
+the next Top-5: results also depend on the candidate pool.
 
-### 2. Start the Zotero Claude bridge
+## Agent Workflow
 
-Claude Code mode depends on the companion bridge repo
-[`cc-llm4zotero-adapter`](https://github.com/jianghao-zhang/cc-llm4zotero-adapter).
+```text
+“根据我的研究兴趣推荐5篇值得读的论文”
+ ↓
+research-intelligence Skill
+ ↓
+research_recommend
+ ↓
+Personalized Research Digest
+```
 
-```bash
-git clone https://github.com/jianghao-zhang/cc-llm4zotero-adapter.git
-cd cc-llm4zotero-adapter
-npm install
+Users speak naturally; tool names are shown here for developers. A recommendation
+call loads the profile, discovers and ranks candidates, gathers evidence and
+saves the impression internally. Profile inspection uses `research_profile_get`;
+candidate debugging uses `research_candidate_discover`.
+
+Follow-up feedback resolves the previous list’s rank to saved recommendation and
+candidate IDs. Short requests such as “再推荐一次” need recommendation context;
+they do not independently activate the Skill by a text-only routing rule. The
+Skill can also be selected explicitly with `$research-intelligence` or
+`/research-intelligence`.
+
+These four recommendation tools are local to plugin Agent mode. They are not
+exposed through Codex App Server, Claude Code, WebChat or the public MCP catalog.
+
+## Demo
+
+This is an **expected interaction script**, not a recorded live demonstration.
+Use the same Agent conversation for all four steps.
+
+| Step                | Input                               | Expected behavior                                                                                    |
+| ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 1. Research Profile | 你觉得我的主要研究方向是什么？      | Show weighted topics and their sources; read an existing profile without refreshing                  |
+| 2. Recommendation   | 根据我的研究兴趣推荐5篇值得读的论文 | Return up to five ranked papers with available metadata, interest matches, evidence and source links |
+| 3. Feedback         | 第2篇我很喜欢，第4篇不感兴趣        | Resolve the previous ranks and confirm each positive/negative feedback update                        |
+| 4. Follow-up        | 再推荐一次                          | Recommend using the revised profile, without an automatic rebuild                                    |
+
+If fewer papers are returned, give feedback only on ranks that exist. Ask
+“为什么第1篇适合我？” to inspect available support and limitations. See the
+[full demo](docs/research-intelligence-demo.md) for preparation, evidence gaps,
+feedback cancellation and import behavior.
+
+## Evaluation Status
+
+### Completed
+
+Recorded Phase 8 results on **2026-09-09**:
+
+| Offline check               | Recorded result                                                     |
+| --------------------------- | ------------------------------------------------------------------- |
+| Deterministic routing cases | 49 / 49 passed: 27 positive, 22 non-activation cases                |
+| Explicit Skill invocation   | 3 / 3 passed                                                        |
+| Scripted Runtime contracts  | 3 / 3 passed: recommendation, approved feedback, cancelled feedback |
+| Full unit suite             | 4,522 passing / 1 pre-existing pending                              |
+
+The 49 cases exercise regex fallback routing. Expected tool labels are manually
+assigned; Runtime tests use a scripted model. **These results do not measure LLM
+Tool Selection Accuracy, Agent success rate, or hallucination-free answers.**
+
+The offline evaluation framework implements Precision@K, Recall@K, MRR, NDCG@K,
+diversity, novelty and evidence diagnostics. Synthetic fixtures verify formulas
+and contracts; they do not establish real-user recommendation quality or an
+improvement over a baseline. See the
+[workflow evaluation and reproduction commands](docs/research-intelligence-workflow-eval.md)
+and [metric definitions](docs/phase7-host-validation.md#指标约定).
+
+### Not Yet Executed
+
+- Real Zotero host validation, including restart persistence.
+- Live model workflow evaluation and natural-language multi-turn behavior.
+- OpenAlex live provider validation for this recommendation workflow.
+- Live embedding validation.
+- Group library isolation testing in the real host.
+
+The [host validation checklist](docs/phase7-host-validation.md) records these as
+**NOT EXECUTED**. Offline SQLite seams do not replace host validation.
+
+## Project Status
+
+“Implemented” describes the code and offline contracts, not production readiness.
+
+| Component                             | Status                                        |
+| ------------------------------------- | --------------------------------------------- |
+| Research Profile                      | Implemented                                   |
+| Candidate Discovery                   | Implemented                                   |
+| Ranking / MMR                         | Implemented                                   |
+| Feedback Learning                     | Implemented: deterministic event replay       |
+| Recommendation Impression Persistence | Implemented                                   |
+| Evidence Grounding                    | Implemented                                   |
+| Evaluation Framework                  | Implemented: offline fixtures and diagnostics |
+| Research Intelligence Skill           | Implemented: plugin Agent mode                |
+| Scheduler                             | Not implemented                               |
+| Dedicated Recommendation UI           | Not implemented                               |
+| Cross-device Research Profile Sync    | Not implemented                               |
+
+## Engineering Decisions
+
+### No Scheduler Yet
+
+The MVP focuses on an interactive Agent workflow. A periodic digest needs
+lifecycle management, notifications and failure handling before it can be
+presented as an automatic service.
+
+### No Separate Digest Action
+
+A digest is currently **`research_recommend` + presentation style**. It uses the
+same pipeline; there is no separate `research_digest` action. Asking for a weekly
+digest neither schedules a job nor guarantees papers published only that week.
+
+### Feedback ≠ Import
+
+“I like this paper” revises preference after confirmation. “Import this paper”
+uses the existing Zotero write flow, confirmation and change journal. The
+feedback action `save` records preference only. Feedback events use their own
+persistent memory path and are not Zotero item edits or journal undo entries.
+
+## Contributions
+
+### Built on Existing Infrastructure
+
+[Yile Wang and the llm-for-zotero contributors](https://github.com/yilewang/llm-for-zotero)
+provide the foundation: Zotero integration and UI, Agent runtime, tool/Skill
+framework, scholarly search adapters, RAG/PDF and MinerU services, provider
+abstraction, confirmation and change journal. This fork reuses that work.
+
+### Added in This Project
+
+The Research Intelligence work adds the personalized recommendation architecture,
+persistent research profiles, multi-route candidate discovery, deterministic
+ranking and MMR, recommendation impressions, feedback replay and profile revision,
+evidence grounding, offline evaluation, and the `research-intelligence` Skill
+with routing and workflow contract tests. The
+[development log](docs/development-log.md) tracks Phases 1–8 and their boundaries.
+
+## Repository Structure
+
+```text
+src/
+├─ recommendation/
+│  ├─ domain/       # Models and validation
+│  ├─ profile/      # Extraction, scoring and persistence
+│  ├─ candidate/    # Recall, identity and deduplication
+│  ├─ ranking/      # Features, scoring and MMR
+│  ├─ evidence/     # Retrieval and grounded reasons
+│  ├─ feedback/     # Events, replay and revisions
+│  └─ evaluation/   # Metrics and diagnostics
+└─ agent/
+   ├─ skills/       # Includes research-intelligence.md
+   └─ tools/recommendation/
+test/               # Domain, SQLite, routing and Runtime contracts
+docs/
+├─ research-intelligence-demo.md
+├─ research-intelligence-workflow-eval.md
+├─ phase7-host-validation.md
+├─ research_agent_architecture_baseline.md
+└─ development-log.md
+```
+
+## Installation / Existing Usage
+
+### Build This Fork
+
+Use Node.js 24 and npm to reproduce the documented development environment:
+
+```sh
+git clone https://github.com/ck-alpha/zotero-research-agent.git
+cd zotero-research-agent
+npm ci
 npm run build
-npm run serve:bridge
 ```
 
-Check that the bridge is alive:
+The plugin package is `.scaffold/build/llm-for-zotero.xpi`. Build this fork to try
+the Research Intelligence layer; the inherited upstream release link is not a
+release of this fork’s additions. Package identity and settings still use
+`llm-for-zotero`, including the inherited add-on ID, so this build replaces the
+original plugin rather than installing alongside it.
 
-```bash
-curl -fsS http://127.0.0.1:19787/healthz
+1. In Zotero, open **Tools → Add-ons → gear icon → Install Add-on From File**,
+   select the built `.xpi`, and restart Zotero.
+2. Open **Preferences → llm-for-zotero**, select a provider and enter its base
+   URL, credentials when required, and model; click **Test Connection**.
+3. Enable Agent Mode in preferences, then toggle **Agent (beta)** in the
+   conversation context bar.
+4. Use a test library with topic tags, collections, abstracts and DOI metadata.
+   Candidate discovery needs OpenAlex access; embeddings are optional.
+5. Follow the [demo](docs/research-intelligence-demo.md). This remains a
+   development build awaiting the host and provider checks listed above.
+
+### Development Commands
+
+```sh
+npm run typecheck
+npm run test:unit
+npm run check:cycles
+npm run build
 ```
 
-For macOS background use, install the LaunchAgent from the adapter repo:
-
-```bash
-./scripts/install-macos-daemon.sh
-```
-
-Useful bridge daemon commands:
-
-```bash
-npm run daemon:status
-npm run daemon:start
-npm run daemon:stop
-npm run daemon:restart
-npm run daemon:uninstall
-```
-
-If Claude Code mode stops responding, restart the bridge and re-check
-`/healthz`. A passing `/healthz` check only proves that the adapter is running;
-it does not prove that the underlying `claude` CLI is installed, authenticated,
-or correctly configured.
-
-### 3. Enable Claude Code inside Zotero
-
-Open `Preferences` -> `llm-for-zotero` -> **Agent** tab.
-
-| Setting                            | Recommended value                  |
-| ---------------------------------- | ---------------------------------- |
-| **Enable Claude Code integration** | `On`                               |
-| **Bridge URL**                     | `http://127.0.0.1:19787`           |
-| **Claude Config Source**           | `default - user + project + local` |
-| **Permission Mode**                | `safe`                             |
-| **Default Model**                  | `sonnet`                           |
-| **Default Reasoning**              | `auto`                             |
-
-Keep **Claude Config Source** on `default` unless you already understand Claude
-Code settings layers. In `default`, Claude Code can use your normal user
-settings plus Zotero-managed project and per-conversation local settings.
-The other options are:
-
-- `user-only`: only your machine-wide Claude settings.
-- `zotero-only`: only Zotero-managed project and local settings.
-
-After enabling the integration, click the **Claude Code** button in the chat
-header to enter Claude Code mode.
-
-### 4. Prepare Claude project skills and commands
-
-Zotero creates a Claude runtime root under your home directory, usually shaped
-like:
-
-```text
-~/Zotero/agent-runtime/profile-.../
-```
-
-Shared Claude project assets live in:
-
-```text
-CLAUDE.md
-.claude/settings.json
-.claude/skills/
-.claude/commands/
-```
-
-Each Claude conversation also gets its own local `.claude` folder under the
-runtime `scopes/` tree, so per-conversation overrides do not leak into other
-chats.
-
-The Zotero UI loads the model catalog advertised by the configured Claude Code bridge and preserves each model value exactly, including aliases, explicit model IDs, context-window variants, custom provider values, and future model families.
-The chat model picker identifies the active conversation so discovery uses the same scoped `.claude/settings.local.json` stack as the turn.
-The model preference remains editable when discovery is unavailable.
-Claude Code is responsible for resolving or rejecting the selected value and for applying provider or proxy configuration.
-
-</details>
-
-## MinerU PDF Parsing
-
-**MinerU** is an advanced PDF parsing engine that extracts high-fidelity
-Markdown from PDFs, preserving tables, equations, figures, and complex layouts
-that standard text extraction often mangles.
-
-When enabled, the plugin sends newly added PDF attachments to MinerU for parsing
-and caches the result locally. Later interactions with that paper use the
-MinerU-parsed content.
-
-<p align="center">
-  <img src="./assets/minerU.png" alt="Screenshot showing MinerU PDF parsing results in the plugin" width="512" />
-</p>
-
-### How to enable MinerU
-
-1. Open `Preferences` -> `llm-for-zotero`.
-2. Find the **MinerU** section and check **Enable MinerU**.
-3. Keep cloud mode enabled, or check **Use local MinerU server** for local mode.
-4. For cloud mode, optionally enter your own MinerU API key — see below.
-5. For local mode, run a self-hosted `mineru-api` server and keep the default
-   base URL (`http://127.0.0.1:8000`) unless your server uses a different
-   address.
-6. Add or import a PDF into your Zotero library. The plugin will automatically
-   parse newly added PDF attachments with MinerU and cache the result for future conversations.
-
-MinerU can start without an API key through the built-in API, but a personal key
-is strongly recommended. The built-in API may no longer be supported after
-June 1, 2026.
-
-To get a free personal key:
-
-1. Go to [mineru.net](https://mineru.net) and create an account.
-2. Navigate to account settings and generate an API key.
-3. In Zotero, paste the key into the **MinerU** section.
-4. Click **Test Connection**.
-
-When a personal key is provided, the plugin calls
-`https://mineru.net/api/v4` directly.
-
-### Using a local MinerU server
-
-Local MinerU server support was contributed by
-[@renyong18](https://github.com/renyong18) in
-[PR #152](https://github.com/yilewang/llm-for-zotero/pull/152).
-
-Local mode sends PDFs to a self-hosted `mineru-api` server through
-`POST /file_parse` and stores the returned ZIP output in the same local cache
-format as cloud parsing. The default base URL is `http://127.0.0.1:8000`.
-
-**Prerequisites for local mode**:
-
-1. Install MinerU and run `mineru-api` (see the
-   [MinerU docs](https://github.com/opendatalab/MinerU) for installation).
-2. Make sure required models are downloaded — `mineru-api` lazy-loads on first
-   request, so the very first parse (or the first parse after switching backend)
-   can take noticeably longer than steady state.
-
-You can pick a `Backend` in the local section:
-
-- `pipeline` (default) — general-purpose, multi-language, CPU-friendly.
-- `vlm` — VLM-based, high accuracy on Chinese/English documents, requires GPU.
-- `hybrid` — newer high-accuracy hybrid pipeline, multi-language, requires
-  local compute.
-
-The first parse after starting the local server, or after changing backend, can
-be slow while MinerU loads or downloads models. `Test Connection` checks that
-the server process responds at `/health`; it does not guarantee that all models
-are warmed up.
-
-With the default `127.0.0.1` address, PDFs stay on your machine. If you change
-the base URL to a LAN or remote server, PDFs are sent to that server.
-
-**Pause / cancel limitation**: `mineru-api` exposes no cancel or DELETE endpoint
-(only `POST /file_parse`, `POST /tasks`, `GET /tasks/{id}`,
-`GET /tasks/{id}/result`, `GET /health`). When you click Pause, the plugin stops
-the queue and aborts the HTTP wait, but the parse already running on the server
-keeps executing until it finishes — the GPU/CPU will not free up sooner. If you
-need to abort immediately (for example to switch backend without waiting),
-restart the `mineru-api` process yourself.
-
-### Managing MinerU caches
-
-The **MinerU** preferences tab includes a **Manage Files** panel for maintaining
-parsed PDF caches:
-
-- Browse cached and uncached PDFs by collection, tag, title, author, year, and
-  added date.
-- Start parsing all visible files, only filtered files, or selected files.
-- Repair local MinerU caches and synced packages when metadata or files drift.
-- Delete all, filtered, selected, or single-item caches from the manager.
-- Use tag filters, including automatic Zotero tags, to choose which papers are
-  included in bulk actions.
-
-Advanced parsing filters can skip files before automatic or bulk parsing:
-
-- **Skip files over N pages** controls the maximum page count used by Start All,
-  Start Filtered, Start Selected, and auto-parse. The default is 100 pages.
-- **Exclude PDFs by Filename** accepts comma-separated substrings, or regex
-  patterns wrapped in `/slashes/`, for translated copies, supplements, or other
-  files you do not want parsed automatically.
-
-If **Sync MinerU cache with Zotero file sync** is enabled, the plugin can create
-companion ZIP attachments containing `full.md`, `manifest.json`,
-`content_list.json`, and extracted assets. Existing local caches sync only when
-you request it from the MinerU tab, and synced packages can restore a missing
-local cache when needed.
-
-<a id="webchat-setup-chatgpt-web-sync"></a>
-
-## WebChat Setup (ChatGPT & Deepseek Web Sync)
-
-WebChat mode sends questions to [chatgpt.com](https://chatgpt.com) and [deepseek.com](https://chat.deepseek.com) through a
-browser extension, then streams responses back into Zotero. It is useful when
-you want ChatGPT/deepseek web access without a provider API key.
-
-<p align="center">
-  <img src="./assets/webchat.gif" alt="Screenshot of WebChat mode connected to chatgpt.com" width="1024" />
-</p>
-
-Prerequisites:
-
-- A ChatGPT account for `chatgpt.com` WebChat or a Deepseek account for `deepseek.com` WebChat.
-- A Chromium-based browser such as Chrome.
-
-Setup:
-
-1. Download the latest `extension.zip` from
-   [sync-for-zotero releases](https://github.com/yilewang/sync-for-zotero).
-2. Unzip it.
-3. Open `chrome://extensions`, enable **Developer Mode**, choose
-   **Load unpacked**, and select the unzipped extension folder.
-4. In Zotero, open `Preferences` -> `llm-for-zotero` and set
-   **Auth Mode** -> `WebChat`.
-5. ⚠️: Keep a ChatGPT tab open in your browser. A green dot in Zotero means the extension and ChatGPT tab are connected. Make sure the tab and Zotero stay in the same monitor. No minimization or backgrounding, or the connection may drop.
-
-For release validation, keep Chrome signed in with the development extension loaded and run:
-
-```bash
-npm run test:webchat:live
-```
-
-This opt-in gate creates a real Zotero PDF fixture and clicks the real Zotero composer send control.
-It verifies one exact PDF upload and answer, toggles the visible PDF chip both ways, then verifies one prompt-only turn with zero submitted PDFs through the relay and Chrome extension.
-
-## Privacy and Data Flow
-
-Data flow depends on the backend you choose. Local models and local MinerU can
-keep processing on your machine; cloud providers, WebChat, Claude Code, Codex,
-and cloud MinerU involve their respective services or companion runtimes.
-
-<details>
-<summary>Detailed backend data flow</summary>
-
-- In standard provider mode, paper content and user messages are sent to the
-  model provider you configure.
-- In local-model mode, requests go to the local OpenAI-compatible endpoint you
-  configure.
-- In WebChat mode, requests are relayed through the browser extension to
-  `chatgpt.com` or `chat.deepseek.com`.
-- When Tavily Web Search is configured, web queries and requested public URLs are sent to Tavily; the API key remains in local Zotero preferences.
-- In cloud MinerU mode, newly added PDFs are sent to MinerU for parsing when
-  parsing is enabled.
-- In local MinerU mode, newly added PDFs are sent to the local or remote
-  `mineru-api` server you configure.
-- Conversation history and cached paper context are stored locally by the
-  plugin.
-- Agent Mode write operations are routed through reviewable actions and session
-  undo where supported.
-
-</details>
-
-## Roadmap
-
-- [x] Agent mode (beta)
-- [x] MinerU PDF parsing
-- [x] GitHub Copilot auth
-- [x] WebChat mode (ChatGPT web sync)
-- [x] Standalone window mode
-- [x] File-based notes (Obsidian, Logseq, any Markdown directory)
-- [x] Claude Code integration
-- [x] Codex App Server integration
-- [x] Local MinerU support
-- [x] Customized skills
-- [x] Cross-device synchronization (MinerU cache)
-- [ ] Agent memory system
-
-## FAQ
-
-> **Q: Does it require an API key to use this plugin?**
->
-> A: It depends on the backend you choose. The plugin supports multiple backends with different requirements:
-
-| Goal                                                        | Recommended path                                                              | API key required?               |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------- |
-| Use OpenAI, Gemini, DeepSeek, Moonshot, or another provider | Configure an API provider in Zotero preferences                               | Yes                             |
-| Use a local model                                           | Connect any OpenAI-compatible local HTTP API                                  | Usually no                      |
-| Use ChatGPT in the browser                                  | [WebChat](#webchat-setup-chatgpt-web-sync) with the Sync for Zotero extension | No                              |
-| Use Codex models with ChatGPT Plus                          | [Codex App Server](#codex-setup-chatgpt-plus-subscribers)                     | No separate API key             |
-| Use Claude Code inside Zotero                               | [Claude Code bridge](#claude-code-setup-experimental)                         | Claude Code auth                |
-| Search and read the current public web                      | [General Web Search](#general-web-search) with Tavily                          | Tavily API key                  |
-| Improve PDF extraction for tables, equations, and figures   | [MinerU PDF parsing](#mineru-pdf-parsing)                                     | Personal MinerU key recommended |
-
-> **Q: Is it free to use?**
->
-> Yes, the plugin is free. You only pay for API calls if you choose a paid
-> provider. With Codex App Server, ChatGPT Plus subscribers can use Codex models
-> without a separate API key. If you find this helpful, consider leaving a star
-> on GitHub or [buying me a coffee](https://buymeacoffee.com/yat.lok).
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/1e945e57-4b99-4d25-b8d5-fb120e100b62" width="200" alt="Alipay donation QR code">
-</p>
-
-> **Q: Is my data used to train models?**
->
-> The plugin does not train models. Data handling depends on the backend you
-> choose: your configured API provider, local model, WebChat, Codex, Claude
-> Code, or MinerU.
-
-> **Q: How do I report a bug or ask a question?**
->
-> Please [open an issue](https://github.com/yilewang/llm-for-zotero/issues) on
-> GitHub.
-
-## Contributing
-
-Contributions are welcome. Bug reports, feature requests, documentation
-improvements, and pull requests are all useful. Please
-[open an issue](https://github.com/yilewang/llm-for-zotero/issues) or submit a
-PR.
-
-### Model capability registry
-
-Model context limits and provider-defined reasoning options are maintained in
-[`registry/model-capabilities.v1.json`](./registry/model-capabilities.v1.json).
-
-The plugin refreshes this schema-validated registry and each configured
-provider's model catalog in the background, and performs a bounded first-use
-refresh when needed.
-
-Adding a model to the registry does not require a plugin release; increment the
-registry revision, run `npm run validate:model-registry`, and publish the JSON
-change.
-
-When a provider does not expose reasoning controls or context metadata through
-its model catalog, the registry remains the authoritative provider-maintained
-fallback.
+For a Zotero development session, copy [`.env.example`](.env.example) to `.env`,
+set the Zotero binary, development profile and data directory paths, then run
+`npm start`. `npm run test:workflow` requires a configured Zotero host. Live
+checks are opt-in; their setup is documented in the preserved usage guide.
+
+### Existing Plugin Features and Setup
+
+Paper chat, PDF citations, notes, figures, MinerU parsing and alternative
+backends remain inherited features. The
+[preserved usage guide](doc/existing-usage.md) retains the previous README’s
+configuration instructions, demos, backend setup, privacy details and credits.
+Its upstream release and support links refer to the original project.
+Alternative backends do not expose this fork’s recommendation tools.
+
+Research-profile extraction may send selected metadata to the configured model;
+discovery sends queries and seed identifiers to the scholarly provider. Optional
+embeddings use the configured embedding endpoint. Profiles, impressions and
+feedback persist locally; external service use depends on configuration.
+
+## Future Work
+
+Possible next steps, without a committed delivery schedule:
+
+- Real Zotero host, restart, group library and live-model validation.
+- Periodic research digests and a dedicated recommendation UI.
+- Temporal holdout evaluation and live provider/model benchmarks.
+- Cross-device research-profile identity and synchronization.
+- Recommendation evidence caching.
+
+## License and Attribution
+
+Licensed under **AGPL-3.0-or-later**; see [LICENSE](LICENSE).
+Original project: [llm-for-zotero](https://github.com/yilewang/llm-for-zotero),
+by **Yile Wang and contributors**, built with the
+[Zotero Plugin Template](https://github.com/windingwind/zotero-plugin-template).
+The earlier README also credits
+[@jianghao-zhang](https://github.com/jianghao-zhang) and
+[@boltma](https://github.com/boltma) for Codex App Server, Claude Code and file
+upload work; those credits and upstream support links remain in the preserved
+guide.
+
+For this fork’s bugs, documentation changes and contributions, use
+[ck-alpha/zotero-research-agent issues](https://github.com/ck-alpha/zotero-research-agent/issues)
+or submit a pull request to this repository.

@@ -48,6 +48,26 @@
 
 ## Change History
 
+### 2026-09-10 / README redesign
+
+- 根据 `doc/codex_readme_redesign_prompt.md` 重写主 README，以 Phase 8 的
+  Research Intelligence 定位、闭环架构、能力、Agent 流程、演示、评测边界、
+  项目状态、工程决策、贡献归属、安装开发与未来工作组织首页。
+- `doc/existing-usage.md` 保留改版前 README 的详细配置、后端说明、隐私、演示
+  和上游署名；修正移动后的相对链接，并注明其上游 release 不代表本 fork 新能力。
+- 安装入口使用当前 fork 的源码构建，说明产物路径及沿用 add-on ID；未修改插件
+  代码、包身份、License 或现有阶段标签。保留原样需求文档供后续核对。
+- 核对源码、Phase 8 演示/评测、Phase 7 宿主清单和架构基线：49/49 为确定性路由，
+  不代表 LLM 工具选择准确率或 Agent 成功率；4,522 passing / 1 pending 标注为
+  2026-09-09 的历史全量记录，本次未重跑全量。真实宿主、重启、group library、
+  OpenAlex、embedding 和 live model 验收仍待执行。
+- 本次复跑 Skill / bootstrap 专项：63 passing；Runtime research intelligence
+  专项：3 passing。Markdown 解析、44 个本地链接/锚点、HTML 图片路径和两个
+  Mermaid 图语法通过；Mermaid 在临时 jsdom 环境校验，未改项目依赖。
+  主 README 与保留使用指南通过 Prettier；`git diff --check` 通过。
+- 交付目标为个人 `origin/main`；只提交本轮 README、保留指南、需求与日志。
+  用户 `doc/analysis/` 和独立中文分析报告保持未跟踪，不纳入提交。
+
 ### 2026-09-09 / recommendation-phase8-research-intelligence-productization
 
 #### Goal
